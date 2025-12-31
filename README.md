@@ -1,14 +1,16 @@
 # 7D2D Decompiler Script
 
-A PowerShell utility for decompiling 7 Days to Die game assemblies. Designed to help mod developers track code changes between game updates.
+A PowerShell utility for extracting 7 Days to Die game code and data files. Designed to help mod developers track ALL changes between game updates - both code and XML configs.
 
 ## Features
 
+- **Extracts everything** - Decompiled C# code AND XML config files
 - **Auto-detects** 7 Days to Die installation (common Steam paths)
 - **Git integration** - automatically tracks version history with commits
-- **Version diffing** - see exactly what changed between game updates
+- **Version diffing** - see exactly what changed between game updates (code + data)
 - **Non-destructive** - without git, creates versioned folders instead of overwriting
 - **Auto-installs** ILSpyCmd if not present
+- **Flexible** - can extract code only, data only, or both
 
 ## Quick Start
 
@@ -17,7 +19,7 @@ A PowerShell utility for decompiling 7 Days to Die game assemblies. Designed to 
 git clone https://github.com/rk-gamemods/7D2D-DecompilerScript.git
 cd 7D2D-DecompilerScript
 
-# Run the decompiler
+# Run the extractor
 .\Decompile-7D2D.ps1
 ```
 
@@ -25,7 +27,29 @@ The script will:
 1. Auto-detect your 7D2D installation
 2. Detect game version
 3. Decompile game assemblies to `7D2DCodebase/`
-4. Initialize git and commit (if git is available)
+4. Copy game data files (XML configs) to `7D2DCodebase/Data/`
+5. Initialize git and commit (if git is available)
+
+## Output Structure
+
+```
+7D2DCodebase/
+├── Assembly-CSharp/           # Main game code
+├── Assembly-CSharp-firstpass/ # Additional game code
+├── 0Harmony/                  # Harmony library
+├── Data/
+│   └── Config/                # All XML configs
+│       ├── blocks.xml
+│       ├── items.xml
+│       ├── recipes.xml
+│       ├── buffs.xml
+│       ├── loot.xml
+│       ├── progression.xml
+│       ├── XUi/               # UI definitions
+│       ├── Localization.txt   # All game text
+│       └── ...
+└── README.md
+```
 
 ## Requirements
 
@@ -35,10 +59,22 @@ The script will:
 
 ## Usage
 
-### Basic Usage
+### Basic Usage (Extract Everything)
 
 ```powershell
 .\Decompile-7D2D.ps1
+```
+
+### Code Only (Skip XML Data)
+
+```powershell
+.\Decompile-7D2D.ps1 -CodeOnly
+```
+
+### Data Only (Skip Decompilation)
+
+```powershell
+.\Decompile-7D2D.ps1 -DataOnly
 ```
 
 ### Custom Game Path
@@ -69,7 +105,7 @@ The script will:
 
 ### With Git (Recommended)
 
-When git is available, all decompiled code goes in a single folder with git history:
+When git is available, everything goes in a single folder with git history:
 
 ```powershell
 # After game update, just run again
@@ -77,9 +113,11 @@ When git is available, all decompiled code goes in a single folder with git hist
 
 # See what changed
 cd 7D2DCodebase
-git log --oneline                           # Version history
-git diff HEAD~1 --stat                      # Summary of changed files
-git diff HEAD~1 -- XUiM_PlayerInventory.cs  # Specific file changes
+git log --oneline                             # Version history
+git diff HEAD~1 --stat                        # Summary of ALL changes
+git diff HEAD~1 -- "*.cs"                     # Code changes only
+git diff HEAD~1 -- "Data/Config/*.xml"        # XML changes only
+git diff HEAD~1 -- Data/Config/items.xml      # Specific file
 ```
 
 ### Without Git
@@ -87,13 +125,15 @@ git diff HEAD~1 -- XUiM_PlayerInventory.cs  # Specific file changes
 Creates versioned folders to preserve previous versions:
 
 ```
-7D2DCodebase/           # First decompile (v2.5)
-7D2DCodebase_v2.6.123/  # Second decompile (v2.6)
+7D2DCodebase/           # First extraction (v2.5)
+7D2DCodebase_v2.6.123/  # Second extraction (v2.6)
 ```
 
 Use VS Code's folder compare feature to diff between versions.
 
-## What Gets Decompiled
+## What Gets Extracted
+
+### Decompiled Code
 
 | Assembly | Contents |
 |----------|----------|
@@ -101,13 +141,30 @@ Use VS Code's folder compare feature to diff between versions.
 | `Assembly-CSharp-firstpass.dll` | Additional game systems |
 | `0Harmony.dll` | Harmony patching library (reference) |
 
+### Game Data Files
+
+| File | Purpose |
+|------|---------|
+| `blocks.xml` | Block definitions, destruction effects, loot |
+| `items.xml` | Item properties - damage, durability, etc. |
+| `recipes.xml` | Crafting recipes and requirements |
+| `buffs.xml` | Status effects, food buffs, injuries |
+| `entityclasses.xml` | Entity (zombie, animal) definitions |
+| `loot.xml` | Loot table definitions |
+| `progression.xml` | Skills, perks, and their effects |
+| `quests.xml` | Quest definitions |
+| `traders.xml` | Trader inventories and prices |
+| `sounds.xml` | Sound effect definitions |
+| `XUi/*.xml` | UI layout definitions |
+| `Localization.txt` | All game text strings |
+
 ## Use Cases
 
 ### After a Game Update
 
 1. Run `.\Decompile-7D2D.ps1`
-2. Check the diff summary
-3. Search for classes your mod patches to see if they changed
+2. Check the diff summary - see both code AND XML changes
+3. Search for classes/items your mod affects to see if they changed
 
 ### Finding Method Signatures
 
@@ -117,13 +174,19 @@ cd 7D2DCodebase
 Select-String -Path "Assembly-CSharp\*.cs" -Pattern "GetItemCount"
 ```
 
+### Finding Item Properties
+
+```powershell
+# Search XML for item definitions
+Select-String -Path "Data\Config\items.xml" -Pattern "drinkJarPureMineralWater"
+```
+
 ### Understanding Game Systems
 
-The decompiled code shows exactly how the game works internally. Search for:
-- Class definitions
-- Method implementations
-- Event handlers
-- How systems connect
+Search for connections between code and data:
+- Code shows HOW things work
+- XML shows WHAT is configured
+- Together, complete picture
 
 ## Key Classes for Modding
 
@@ -147,6 +210,16 @@ The decompiled code shows exactly how the game works internally. Search for:
 ### Challenges
 - `ChallengeObjectiveGather` - Gather objective
 - `ChallengeClass` - Challenge definitions
+
+## Key XML Files for Modding
+
+- **items.xml** - Add/modify items, properties, effects
+- **blocks.xml** - Block definitions, what drops when destroyed
+- **recipes.xml** - What you can craft and requirements
+- **buffs.xml** - Status effects from food, injuries, etc.
+- **progression.xml** - Skills, perks, level requirements
+- **loot.xml** - What spawns in containers
+- **Localization.txt** - All text shown to players
 
 ## Troubleshooting
 
@@ -182,3 +255,4 @@ MIT License - Use freely for your modding projects.
 ## Related Projects
 
 - [ProxiCraft](https://github.com/rk-gamemods/7D2D-ProxiCraft) - Craft from nearby containers mod
+- [AudibleBreakingGlassJars](https://github.com/rk-gamemods/7D2D-AudibleBreakingGlassJars) - Sound when jars break

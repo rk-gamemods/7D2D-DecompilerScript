@@ -1,5 +1,5 @@
 # Decompile-7D2D.ps1
-# Decompiles 7 Days to Die game assemblies for code reference
+# Extracts 7 Days to Die game code and data for reference and diffing
 # Uses git versioning to track changes between game updates
 #
 # USAGE:
@@ -8,16 +8,31 @@
 #   .\Decompile-7D2D.ps1 -OutputPath ".\GameCode"    # Custom output path
 #   .\Decompile-7D2D.ps1 -NoGit                       # Skip git versioning
 #   .\Decompile-7D2D.ps1 -Force                       # Force overwrite (destructive without git!)
+#   .\Decompile-7D2D.ps1 -CodeOnly                    # Skip data files, decompile code only
+#   .\Decompile-7D2D.ps1 -DataOnly                    # Skip decompilation, copy data files only
 #
 # REQUIREMENTS:
 #   - .NET SDK (for ilspycmd) - https://dotnet.microsoft.com/download
 #   - Git (optional but recommended) - https://git-scm.com/download/win
 #
+# OUTPUT STRUCTURE:
+#   7D2DCodebase/
+#   ├── Assembly-CSharp/       # Decompiled main game code
+#   ├── Assembly-CSharp-firstpass/
+#   ├── 0Harmony/
+#   └── Data/                  # Game data files (XML configs, etc.)
+#       └── Config/            # All XML configuration files
+#           ├── blocks.xml
+#           ├── items.xml
+#           ├── recipes.xml
+#           ├── XUi/           # UI definitions
+#           └── ...
+#
 # VERSION TRACKING:
 #   WITH GIT (recommended):
-#     - All code in one folder, git tracks history
+#     - All code and data in one folder, git tracks history
 #     - Run script after each game update
-#     - Use `git diff HEAD~1` to see changes
+#     - Use `git diff HEAD~1` to see ALL changes (code + XML)
 #
 #   WITHOUT GIT:
 #     - Creates versioned folders: 7D2DCodebase_v2.5, 7D2DCodebase_v2.6
@@ -29,7 +44,9 @@ param(
     [string]$OutputPath,    # Where to put decompiled code (defaults to .\7D2DCodebase)
     [switch]$Force,         # Force overwrite without git
     [switch]$NoGit,         # Skip git versioning entirely
-    [switch]$NoDiff         # Skip showing diff summary after commit
+    [switch]$NoDiff,        # Skip showing diff summary after commit
+    [switch]$CodeOnly,      # Skip data files, decompile code only
+    [switch]$DataOnly       # Skip decompilation, copy data files only
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +56,11 @@ $assemblies = @(
     "Assembly-CSharp.dll",           # Main game code
     "Assembly-CSharp-firstpass.dll", # Additional game code
     "0Harmony.dll"                   # Harmony library (for reference)
+)
+
+# Data folders to copy (relative to game install)
+$dataFolders = @(
+    "Data\Config"                    # All XML configs (blocks, items, recipes, XUi, etc.)
 )
 
 # Auto-detect game path if not specified
@@ -88,29 +110,46 @@ if (-not (Test-Path (Join-Path $managedPath "Assembly-CSharp.dll"))) {
     exit 1
 }
 
-Write-Host "=== 7 Days to Die Code Decompiler ===" -ForegroundColor Cyan
+Write-Host "=== 7 Days to Die Code & Data Extractor ===" -ForegroundColor Cyan
 Write-Host "Game Path: $GamePath"
 Write-Host "Output Path: $OutputPath"
+if ($CodeOnly) { Write-Host "Mode: Code only (skipping data files)" -ForegroundColor Yellow }
+if ($DataOnly) { Write-Host "Mode: Data only (skipping decompilation)" -ForegroundColor Yellow }
 Write-Host ""
 
-# Try to get game version from version.txt or assembly
+# Try to get game version from various sources
 function Get-GameVersion {
     param([string]$GamePath)
     
-    # Try version.txt first
+    # Try version.txt first (some versions have this)
     $versionFile = Join-Path $GamePath "version.txt"
     if (Test-Path $versionFile) {
         $version = (Get-Content $versionFile -Raw).Trim()
-        if ($version) { return $version }
+        if ($version -and $version -notmatch "^\s*$") { return $version }
+    }
+    
+    # Try Steam manifest for build ID
+    # Look for appmanifest_251570.acf (7D2D's Steam app ID)
+    $steamAppsPath = Split-Path (Split-Path $GamePath -Parent) -Parent
+    $manifestPath = Join-Path $steamAppsPath "appmanifest_251570.acf"
+    if (Test-Path $manifestPath) {
+        $content = Get-Content $manifestPath -Raw
+        if ($content -match '"buildid"\s+"(\d+)"') {
+            return "build-$($Matches[1])"
+        }
     }
     
     # Try to get from Assembly-CSharp.dll file version
     $assemblyPath = Join-Path $GamePath "7DaysToDie_Data\Managed\Assembly-CSharp.dll"
     if (Test-Path $assemblyPath) {
         $fileInfo = (Get-Item $assemblyPath).VersionInfo
-        # Try ProductVersion first (often more descriptive), then FileVersion
-        if ($fileInfo.ProductVersion) { return "v$($fileInfo.ProductVersion)" }
-        if ($fileInfo.FileVersion) { return "v$($fileInfo.FileVersion)" }
+        # Only use if not 0.0.0.0
+        if ($fileInfo.ProductVersion -and $fileInfo.ProductVersion -ne "0.0.0.0") { 
+            return "v$($fileInfo.ProductVersion)" 
+        }
+        if ($fileInfo.FileVersion -and $fileInfo.FileVersion -ne "0.0.0.0") { 
+            return "v$($fileInfo.FileVersion)" 
+        }
     }
     
     # Fallback to date
@@ -134,32 +173,33 @@ if (-not $NoGit) {
     }
 }
 
-# Check if ILSpyCmd is installed
-$ilspyCmd = Get-Command "ilspycmd" -ErrorAction SilentlyContinue
-if (-not $ilspyCmd) {
-    Write-Host "ILSpyCmd not found. Installing via dotnet tool..." -ForegroundColor Yellow
-    
-    # Check if dotnet is available
-    $dotnetCmd = Get-Command "dotnet" -ErrorAction SilentlyContinue
-    if (-not $dotnetCmd) {
-        Write-Host "ERROR: .NET SDK not found. Please install from https://dotnet.microsoft.com/download" -ForegroundColor Red
-        exit 1
-    }
-    
-    dotnet tool install -g ilspycmd
-    
-    # Refresh PATH
-    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-    
+# Check if ILSpyCmd is installed (only needed if decompiling)
+if (-not $DataOnly) {
     $ilspyCmd = Get-Command "ilspycmd" -ErrorAction SilentlyContinue
     if (-not $ilspyCmd) {
-        Write-Host "ERROR: Failed to install ilspycmd. Please install manually:" -ForegroundColor Red
-        Write-Host "  dotnet tool install -g ilspycmd" -ForegroundColor Yellow
-        exit 1
+        Write-Host "ILSpyCmd not found. Installing via dotnet tool..." -ForegroundColor Yellow
+        
+        # Check if dotnet is available
+        $dotnetCmd = Get-Command "dotnet" -ErrorAction SilentlyContinue
+        if (-not $dotnetCmd) {
+            Write-Host "ERROR: .NET SDK not found. Please install from https://dotnet.microsoft.com/download" -ForegroundColor Red
+            exit 1
+        }
+        
+        dotnet tool install -g ilspycmd
+        
+        # Refresh PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        
+        $ilspyCmd = Get-Command "ilspycmd" -ErrorAction SilentlyContinue
+        if (-not $ilspyCmd) {
+            Write-Host "ERROR: Failed to install ilspycmd. Please install manually:" -ForegroundColor Red
+            Write-Host "  dotnet tool install -g ilspycmd" -ForegroundColor Yellow
+            exit 1
+        }
     }
+    Write-Host "Using ILSpyCmd: $($ilspyCmd.Source)" -ForegroundColor Green
 }
-
-Write-Host "Using ILSpyCmd: $($ilspyCmd.Source)" -ForegroundColor Green
 
 # Check if this is a git-versioned codebase (has previous commits)
 $isGitRepo = $gitAvailable -and (Test-Path (Join-Path $OutputPath ".git"))
@@ -184,17 +224,30 @@ if ($isGitRepo) {
 $safeVersion = $gameVersion -replace '[<>:"/\\|?*]', '_' -replace '\s+', '_'
 
 # Handle existing output directory
+# For partial runs (-CodeOnly/-DataOnly), we only clear what we're replacing
+# For full runs, we clear everything
+$isPartialRun = $CodeOnly -or $DataOnly
+
 if (Test-Path $OutputPath) {
     if ($isGitRepo) {
         # Git repo exists - safe to update in place (history preserved)
         Write-Host "Git repo exists - will update and commit changes..." -ForegroundColor Yellow
-        Push-Location $OutputPath
-        try {
-            # Remove everything except .git
-            Get-ChildItem -Path $OutputPath -Exclude ".git" | Remove-Item -Recurse -Force
-        } finally {
-            Pop-Location
+        if (-not $isPartialRun) {
+            # Full run - clear everything except .git
+            Push-Location $OutputPath
+            try {
+                Get-ChildItem -Path $OutputPath -Exclude ".git" | Remove-Item -Recurse -Force
+            } finally {
+                Pop-Location
+            }
+        } elseif ($DataOnly) {
+            # Data only - just clear the Data folder
+            $dataPath = Join-Path $OutputPath "Data"
+            if (Test-Path $dataPath) {
+                Remove-Item $dataPath -Recurse -Force
+            }
         }
+        # CodeOnly doesn't need to clear anything - decompiler overwrites
     } elseif ($gitAvailable -and -not $NoGit) {
         # Git available but folder isn't a repo yet - initialize git to preserve history
         Write-Host "Converting existing folder to git repo for version tracking..." -ForegroundColor Yellow
@@ -205,8 +258,16 @@ if (Test-Path $OutputPath) {
             git commit -m "Previous version (pre-existing)" | Out-Null
             $isGitRepo = $true
             $hasPreviousVersion = $true
-            # Now remove content (git has it saved)
-            Get-ChildItem -Path $OutputPath -Exclude ".git" | Remove-Item -Recurse -Force
+            if (-not $isPartialRun) {
+                # Full run - clear everything except .git
+                Get-ChildItem -Path $OutputPath -Exclude ".git" | Remove-Item -Recurse -Force
+            } elseif ($DataOnly) {
+                # Data only - just clear the Data folder
+                $dataPath = Join-Path $OutputPath "Data"
+                if (Test-Path $dataPath) {
+                    Remove-Item $dataPath -Recurse -Force
+                }
+            }
         } finally {
             Pop-Location
         }
@@ -238,40 +299,81 @@ if (Test-Path $OutputPath) {
 }
 
 # Decompile each assembly
-foreach ($assembly in $assemblies) {
-    $dllPath = Join-Path $managedPath $assembly
-    $assemblyName = [System.IO.Path]::GetFileNameWithoutExtension($assembly)
-    $outputDir = Join-Path $OutputPath $assemblyName
-    
-    if (-not (Test-Path $dllPath)) {
-        Write-Host "SKIP: $assembly not found" -ForegroundColor Yellow
-        continue
-    }
-    
-    Write-Host ""
-    Write-Host "Decompiling $assembly..." -ForegroundColor Cyan
-    Write-Host "  Source: $dllPath"
-    Write-Host "  Output: $outputDir"
-    
-    $startTime = Get-Date
-    
-    # ILSpyCmd options:
-    # -p / --project : Generate .csproj file
-    # -o / --outputdir : Output directory
-    # -lv / --languageversion : C# version (Latest)
-    try {
-        & ilspycmd $dllPath -p -o $outputDir -lv Latest 2>&1 | ForEach-Object {
-            if ($_ -match "error|Error|ERROR") {
-                Write-Host "  $_" -ForegroundColor Red
-            }
+if (-not $DataOnly) {
+    foreach ($assembly in $assemblies) {
+        $dllPath = Join-Path $managedPath $assembly
+        $assemblyName = [System.IO.Path]::GetFileNameWithoutExtension($assembly)
+        $outputDir = Join-Path $OutputPath $assemblyName
+        
+        if (-not (Test-Path $dllPath)) {
+            Write-Host "SKIP: $assembly not found" -ForegroundColor Yellow
+            continue
         }
         
-        $elapsed = (Get-Date) - $startTime
-        $fileCount = (Get-ChildItem $outputDir -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue).Count
-        Write-Host "  Done! $fileCount .cs files in $($elapsed.TotalSeconds.ToString('F1'))s" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Decompiling $assembly..." -ForegroundColor Cyan
+        Write-Host "  Source: $dllPath"
+        Write-Host "  Output: $outputDir"
+        
+        $startTime = Get-Date
+        
+        # ILSpyCmd options:
+        # -p / --project : Generate .csproj file
+        # -o / --outputdir : Output directory
+        # -lv / --languageversion : C# version (Latest)
+        try {
+            & ilspycmd $dllPath -p -o $outputDir -lv Latest 2>&1 | ForEach-Object {
+                if ($_ -match "error|Error|ERROR") {
+                    Write-Host "  $_" -ForegroundColor Red
+                }
+            }
+            
+            $elapsed = (Get-Date) - $startTime
+            $fileCount = (Get-ChildItem $outputDir -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue).Count
+            Write-Host "  Done! $fileCount .cs files in $($elapsed.TotalSeconds.ToString('F1'))s" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  ERROR: $_" -ForegroundColor Red
+        }
     }
-    catch {
-        Write-Host "  ERROR: $_" -ForegroundColor Red
+}
+
+# Copy game data files
+if (-not $CodeOnly) {
+    Write-Host ""
+    Write-Host "Copying game data files..." -ForegroundColor Cyan
+    
+    foreach ($dataFolder in $dataFolders) {
+        $sourcePath = Join-Path $GamePath $dataFolder
+        $destPath = Join-Path $OutputPath $dataFolder
+        
+        if (-not (Test-Path $sourcePath)) {
+            Write-Host "SKIP: $dataFolder not found" -ForegroundColor Yellow
+            continue
+        }
+        
+        Write-Host ""
+        Write-Host "Copying $dataFolder..." -ForegroundColor Cyan
+        Write-Host "  Source: $sourcePath"
+        Write-Host "  Output: $destPath"
+        
+        $startTime = Get-Date
+        
+        try {
+            # Create destination directory
+            New-Item -ItemType Directory -Path $destPath -Force | Out-Null
+            
+            # Copy all files recursively
+            Copy-Item -Path "$sourcePath\*" -Destination $destPath -Recurse -Force
+            
+            $elapsed = (Get-Date) - $startTime
+            $fileCount = (Get-ChildItem $destPath -Recurse -File -ErrorAction SilentlyContinue).Count
+            $folderSize = (Get-ChildItem $destPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "  Done! $fileCount files ($($folderSize.ToString('F1')) MB) in $($elapsed.TotalSeconds.ToString('F1'))s" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  ERROR: $_" -ForegroundColor Red
+        }
     }
 }
 
@@ -282,7 +384,7 @@ $gitSection = if ($gitAvailable -and -not $NoGit) {
 
 ## Git Versioning
 
-This folder is its own git repository. Each decompile creates a commit with the game version.
+This folder is its own git repository. Each extraction creates a commit with the game version.
 
 **View version history:**
 ``````powershell
@@ -292,23 +394,24 @@ git log --oneline
 
 **See what changed between versions:**
 ``````powershell
-git diff HEAD~1 --stat                    # Summary of changed files
-git diff HEAD~1 -- XUiM_PlayerInventory.cs  # Specific file diff
-git diff HEAD~1 -- "*.cs" | head -200     # First 200 lines of all changes
+git diff HEAD~1 --stat                      # Summary of ALL changed files
+git diff HEAD~1 -- "*.cs"                   # Code changes only
+git diff HEAD~1 -- "Data/Config/*.xml"      # XML changes only
+git diff HEAD~1 -- Data/Config/items.xml    # Specific XML file
 ``````
 
 **Compare specific versions:**
 ``````powershell
-git log --oneline                         # Find commit hashes
-git diff abc123 def456 -- SomeClass.cs    # Compare two versions
+git log --oneline                           # Find commit hashes
+git diff abc123 def456 -- SomeClass.cs      # Compare two versions
 ``````
 "@
 } else { "" }
 
 @"
-# 7 Days to Die Decompiled Source
+# 7 Days to Die Game Reference
 
-This directory contains decompiled source code from the game for reference purposes.
+This directory contains decompiled source code AND game data files for reference purposes.
 
 **Generated:** $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 **Game Version:** $gameVersion
@@ -316,17 +419,34 @@ This directory contains decompiled source code from the game for reference purpo
 
 ## Contents
 
+### Decompiled Code
 - ``Assembly-CSharp/`` - Main game code (TileEntity, XUi, EntityPlayer, etc.)
 - ``Assembly-CSharp-firstpass/`` - Additional game systems
 - ``0Harmony/`` - Harmony patching library
+
+### Game Data
+- ``Data/Config/`` - XML configuration files
+  - ``blocks.xml`` - Block definitions
+  - ``items.xml`` - Item definitions
+  - ``recipes.xml`` - Crafting recipes
+  - ``buffs.xml`` - Buff/effect definitions
+  - ``entityclasses.xml`` - Entity definitions
+  - ``loot.xml`` - Loot tables
+  - ``progression.xml`` - Skill/perk trees
+  - ``quests.xml`` - Quest definitions
+  - ``traders.xml`` - Trader inventories
+  - ``XUi/`` - UI layout definitions
+  - ``Localization.txt`` - All game text strings
+  - ...and more
 $gitSection
 
 ## Usage
 
 Search this codebase using VS Code search (Ctrl+Shift+F) or grep to find:
-- Class definitions
-- Method signatures
+- Class definitions and method signatures
 - How game systems work
+- XML property names and values
+- Item/block internal names
 
 ## Key Classes for Modding
 
@@ -353,17 +473,31 @@ Search this codebase using VS Code search (Ctrl+Shift+F) or grep to find:
 - ``ChallengeObjectiveGather`` - Gather objective
 - ``ChallengeClass`` - Challenge definitions
 
+## Key XML Files for Modding
+
+- ``items.xml`` - Add/modify items, set properties like damage, durability
+- ``blocks.xml`` - Block definitions, destruction effects, loot
+- ``recipes.xml`` - Crafting recipes and requirements
+- ``buffs.xml`` - Status effects, food buffs, injuries
+- ``progression.xml`` - Skills, perks, and their effects
+- ``loot.xml`` - What spawns in containers
+- ``Localization.txt`` - All displayed text (for translations)
+
 ## Regenerating
 
-Run the decompile script to update after a game update:
+Run the script after each game update to see what changed:
 ``````powershell
 .\Decompile-7D2D.ps1
 ``````
 $(if ($gitAvailable -and -not $NoGit) { "The script will automatically commit the new version and show a diff summary." } else { "" })
+
+Options:
+- ``-CodeOnly`` - Skip data files, only decompile code
+- ``-DataOnly`` - Skip decompilation, only copy data files
 "@ | Set-Content $readmePath
 
 Write-Host ""
-Write-Host "=== Decompilation Complete ===" -ForegroundColor Cyan
+Write-Host "=== Extraction Complete ===" -ForegroundColor Cyan
 Write-Host "Output: $OutputPath" -ForegroundColor Green
 Write-Host ""
 
@@ -437,10 +571,11 @@ Write-Host ""
 Write-Host "You can now search the codebase in VS Code:" -ForegroundColor Yellow
 Write-Host "  1. Open folder: $OutputPath"
 Write-Host "  2. Use Ctrl+Shift+F to search all files"
-Write-Host "  3. Or use grep_search with includePattern"
+Write-Host "  3. Search .cs files for code, .xml files for game data"
 Write-Host ""
 
 # Show summary
-$totalFiles = (Get-ChildItem $OutputPath -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue).Count
+$csFiles = (Get-ChildItem $OutputPath -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue).Count
+$xmlFiles = (Get-ChildItem $OutputPath -Filter "*.xml" -Recurse -ErrorAction SilentlyContinue).Count
 $totalSize = (Get-ChildItem $OutputPath -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
-Write-Host "Total: $totalFiles .cs files, $($totalSize.ToString('F1')) MB" -ForegroundColor Cyan
+Write-Host "Total: $csFiles .cs files, $xmlFiles .xml files, $($totalSize.ToString('F1')) MB" -ForegroundColor Cyan
