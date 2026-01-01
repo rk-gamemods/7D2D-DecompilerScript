@@ -16,6 +16,10 @@ public class RoslynParser
     private readonly Dictionary<ISymbol, long> _symbolToId = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, long> _signatureToMethodId = new();
     
+    // Keep compilation for call extraction
+    private CSharpCompilation? _compilation;
+    private string? _sourcePath;
+    
     public RoslynParser(bool verbose = false, string? refsPath = null)
     {
         _verbose = verbose;
@@ -72,6 +76,7 @@ public class RoslynParser
     /// </summary>
     public void ExtractToDatabase(string sourcePath, SqliteWriter db)
     {
+        _sourcePath = sourcePath;
         var files = Directory.GetFiles(sourcePath, "*.cs", SearchOption.AllDirectories);
         Console.WriteLine($"Parsing {files.Length} files...");
         
@@ -86,7 +91,7 @@ public class RoslynParser
         Console.WriteLine($"Created {syntaxTrees.Count} syntax trees");
         
         // Create compilation for semantic analysis
-        var compilation = CSharpCompilation.Create(
+        _compilation = CSharpCompilation.Create(
             "GameCode",
             syntaxTrees,
             _references,
@@ -94,7 +99,7 @@ public class RoslynParser
         );
         
         // Check for critical errors (informational only)
-        var diagnostics = compilation.GetDiagnostics()
+        var diagnostics = _compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error)
             .Take(10)
             .ToList();
@@ -117,11 +122,11 @@ public class RoslynParser
         
         using var transaction = db.BeginTransaction();
         
-        foreach (var tree in syntaxTrees)
+        foreach (var tree in _compilation.SyntaxTrees)
         {
             var filePath = tree.FilePath;
             var relativePath = Path.GetRelativePath(sourcePath, filePath);
-            var semanticModel = compilation.GetSemanticModel(tree);
+            var semanticModel = _compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
             
             // Find all type declarations
@@ -406,4 +411,14 @@ public class RoslynParser
     /// </summary>
     public IReadOnlyDictionary<ISymbol, long> SymbolToId => _symbolToId;
     public IReadOnlyDictionary<string, long> SignatureToMethodId => _signatureToMethodId;
+    
+    /// <summary>
+    /// Get the compilation for call extraction (available after ExtractToDatabase).
+    /// </summary>
+    public CSharpCompilation? Compilation => _compilation;
+    
+    /// <summary>
+    /// Get the source path (available after ExtractToDatabase).
+    /// </summary>
+    public string? SourcePath => _sourcePath;
 }

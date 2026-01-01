@@ -96,13 +96,22 @@ class Program
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var parser = new RoslynParser(verbose, refs?.FullName);
         parser.ExtractToDatabase(source.FullName, db);
-        stopwatch.Stop();
+        var parseTime = stopwatch.Elapsed;
         
-        Console.WriteLine($"Extraction took {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
-        // TODO: Extract call relationships (Commit 4)
-
+        // Extract call relationships
         Console.WriteLine();
+        stopwatch.Restart();
+        var callExtractor = new CallExtractor(
+            parser.Compilation!,
+            parser.SymbolToId,
+            parser.SignatureToMethodId,
+            verbose
+        );
+        callExtractor.ExtractCalls(db, source.FullName);
+        var callTime = stopwatch.Elapsed;
+        
+        Console.WriteLine();
+        Console.WriteLine($"Parse time: {parseTime.TotalSeconds:F1}s, Call extraction: {callTime.TotalSeconds:F1}s");
         Console.WriteLine("Extraction complete!");
     }
 }
