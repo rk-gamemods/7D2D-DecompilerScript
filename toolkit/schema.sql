@@ -75,11 +75,11 @@ CREATE INDEX IF NOT EXISTS idx_implements_interface ON implements(interface_name
 -- FTS5: Full-Text Search on Method Bodies
 -- ============================================================================
 
+-- Note: Using content-backed FTS5 (stores data in the virtual table)
 CREATE VIRTUAL TABLE IF NOT EXISTS method_bodies USING fts5(
-    method_id,          -- FK to methods (stored as text for FTS5)
-    body,               -- Full method body text
-    content='',         -- External content mode (we manage content ourselves)
-    tokenize='porter'   -- Use porter stemming
+    method_id UNINDEXED,    -- FK to methods (not searchable, just for joins)
+    body,                   -- Full method body text (searchable)
+    tokenize='porter'       -- Use porter stemming
 );
 
 -- ============================================================================

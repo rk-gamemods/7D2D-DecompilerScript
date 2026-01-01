@@ -90,11 +90,17 @@ class Program
         db.SetMetadata("file_count", csFiles.Length.ToString());
         
         Console.WriteLine("Database initialized with schema.");
+        Console.WriteLine();
 
-        // TODO: Implement in subsequent commits
-        // 2. Create Roslyn compilation (Commit 3)
-        // 3. Parse all files, extract methods (Commit 3)
-        // 4. Extract call relationships (Commit 4)
+        // Parse with Roslyn and extract types/methods
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var parser = new RoslynParser(verbose, refs?.FullName);
+        parser.ExtractToDatabase(source.FullName, db);
+        stopwatch.Stop();
+        
+        Console.WriteLine($"Extraction took {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        // TODO: Extract call relationships (Commit 4)
 
         Console.WriteLine();
         Console.WriteLine("Extraction complete!");
