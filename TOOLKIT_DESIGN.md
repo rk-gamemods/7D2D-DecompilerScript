@@ -447,6 +447,152 @@ EXPECT:
 
 ---
 
+## Implementation Plan
+
+### Project Structure
+
+```
+7D2D-DecompilerScript/
+├── Decompile-7D2D.ps1          # Existing decompiler
+├── TOOLKIT_DESIGN.md           # This document
+├── toolkit/
+│   ├── CallGraphExtractor/     # C# project (Roslyn-based)
+│   │   ├── CallGraphExtractor.csproj
+│   │   ├── Program.cs
+│   │   ├── RoslynParser.cs
+│   │   └── SqliteWriter.cs
+│   ├── 7d2d-tools/             # Python CLI
+│   │   ├── pyproject.toml
+│   │   ├── 7d2d_tools/
+│   │   │   ├── __init__.py
+│   │   │   ├── cli.py
+│   │   │   ├── db.py
+│   │   │   ├── graph.py
+│   │   │   └── compat.py
+│   │   └── tests/
+│   └── schema.sql              # Shared SQLite schema
+└── README.md                   # Updated with toolkit usage
+```
+
+### Phase 1: Foundation (Commits 1-4)
+
+#### Commit 1: Project scaffolding
+- [ ] Create `toolkit/` directory structure
+- [ ] Create `schema.sql` with tables: `methods`, `calls`, `types`
+- [ ] Create empty C# project `CallGraphExtractor.csproj`
+- [ ] Create empty Python project `pyproject.toml`
+- [ ] **COMMIT: "Add toolkit project scaffolding"**
+
+#### Commit 2: SQLite schema + basic C# structure  
+- [ ] Define full schema in `schema.sql`
+- [ ] Add Roslyn NuGet packages to C# project
+- [ ] Create `SqliteWriter.cs` - connects to DB, creates tables
+- [ ] Test: Can create empty database with schema
+- [ ] **COMMIT: "Add SQLite schema and database writer"**
+
+#### Commit 3: Roslyn parser - method extraction
+- [ ] Create `RoslynParser.cs` - load workspace, enumerate files
+- [ ] Extract: class name, method name, signature, file:line
+- [ ] Write method nodes to SQLite
+- [ ] Test: Parse single file, verify methods in DB
+- [ ] **COMMIT: "Add Roslyn method extraction"**
+
+#### Commit 4: Roslyn parser - call extraction
+- [ ] Extend parser to find method invocations
+- [ ] Resolve invocation targets (which exact method is called)
+- [ ] Write call edges to SQLite
+- [ ] Test: Parse file with calls, verify edges in DB
+- [ ] **COMMIT: "Add call graph edge extraction"**
+
+### Phase 2: Basic Queries (Commits 5-7)
+
+#### Commit 5: Python CLI skeleton
+- [ ] Set up Click-based CLI in `cli.py`
+- [ ] Add `db.py` - SQLite connection wrapper
+- [ ] Implement `7d2d-tools build` - calls C# extractor
+- [ ] Test: `7d2d-tools build --help` works
+- [ ] **COMMIT: "Add Python CLI skeleton with build command"**
+
+#### Commit 6: Direct callers/callees queries
+- [ ] Implement `callers <method>` - SQL query, JSON output
+- [ ] Implement `callees <method>` - SQL query, JSON output
+- [ ] Handle ambiguous method names (list matches)
+- [ ] Test: Query known method, verify results
+- [ ] **COMMIT: "Add callers and callees commands"**
+
+#### Commit 7: igraph path finding
+- [ ] Add `graph.py` - load edges from SQLite into igraph
+- [ ] Implement `chain <from> <to>` - shortest path
+- [ ] Output path as JSON with file locations
+- [ ] Test: Find path between known connected methods
+- [ ] **COMMIT: "Add call chain tracing with igraph"**
+
+### Phase 3: Full-Text Search (Commits 8-9)
+
+#### Commit 8: FTS5 indexing
+- [ ] Add `method_bodies` FTS5 virtual table to schema
+- [ ] Extend C# extractor to store method body text
+- [ ] Rebuild test database with body text
+- [ ] **COMMIT: "Add FTS5 method body indexing"**
+
+#### Commit 9: Search command
+- [ ] Implement `search <keyword>` - FTS5 query
+- [ ] Return method name, snippet, file:line
+- [ ] Support boolean operators (AND, OR, NOT)
+- [ ] Test: Search for known pattern
+- [ ] **COMMIT: "Add keyword search command"**
+
+### Phase 4: Mod Compatibility (Commits 10-13)
+
+#### Commit 10: Harmony patch parser
+- [ ] Create `HarmonyParser.cs` - find [HarmonyPatch] attributes
+- [ ] Extract: target class, target method, patch type, priority
+- [ ] Store in `harmony_patches` table
+- [ ] Test: Parse ProxiCraft, verify patches found
+- [ ] **COMMIT: "Add Harmony patch detection"**
+
+#### Commit 11: XML change parser
+- [ ] Create `XmlChangeParser.cs` - parse 7D2D XML mod format
+- [ ] Extract: file, xpath, operation, attribute
+- [ ] Store in `xml_changes` table
+- [ ] Test: Parse mod with XML changes
+- [ ] **COMMIT: "Add XML mod change detection"**
+
+#### Commit 12: Direct conflict detection
+- [ ] Implement `compat` command in Python
+- [ ] SQL: Find same-method patches across mods
+- [ ] SQL: Find same-xpath changes across mods
+- [ ] Output conflict report JSON
+- [ ] **COMMIT: "Add direct conflict detection"**
+
+#### Commit 13: Load order inference
+- [ ] Analyze patch types (Transpiler vs Prefix/Postfix)
+- [ ] Generate load order recommendations
+- [ ] Add to compat output
+- [ ] **COMMIT: "Add load order recommendations"**
+
+### Phase 5: Polish & Documentation (Commits 14-16)
+
+#### Commit 14: Type hierarchy queries
+- [ ] Add `implementations <method>` command
+- [ ] Query inheritance to find all overrides
+- [ ] Helps catch "patched one override, missed another" bugs
+- [ ] **COMMIT: "Add type hierarchy queries"**
+
+#### Commit 15: AI context document
+- [ ] Create `AI_CONTEXT.md` with usage examples
+- [ ] Document query patterns for common problems
+- [ ] Include expected output formats
+- [ ] **COMMIT: "Add AI integration documentation"**
+
+#### Commit 16: README and integration
+- [ ] Update main README with toolkit usage
+- [ ] Add PowerShell wrapper to call toolkit after decompile
+- [ ] End-to-end test: decompile → build DB → query
+- [ ] **COMMIT: "Complete toolkit integration"**
+
+---
+
 ## Test Data Setup
 
 To run these tests, we need:
