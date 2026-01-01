@@ -1,318 +1,333 @@
-# Toolkit Validation: ProxiCraft Bug Detection
+# Toolkit Validation: Realistic Bug Discovery Simulation
 
-This document demonstrates how the 7D2D Mod Maintenance Toolkit would have caught real bugs encountered during ProxiCraft development. Each section shows the bug, how it manifested, and the single query that would have revealed the root cause.
+**Methodology:** This document simulates discovering bugs from *symptoms only*—the way a real developer would encounter them. We don't know the root cause; we only know what the user reported.
+
+The test: Starting from a bug report, can exploratory queries lead to the root cause without prior knowledge of the solution?
 
 **Source:** [ProxiCraft RESEARCH_NOTES.md](../ProxiCraft/RESEARCH_NOTES.md) and [TRADER_SELLING_POSTMORTEM.md](../ProxiCraft/TRADER_SELLING_POSTMORTEM.md)
 
 ---
 
-## Bug #1: Radial Menu Ammo Greyed Out
+## Test Case #1: "Radial Menu Reload Greyed Out"
 
-### The Problem
-Radial menu reload option was greyed out even when ammo existed in nearby containers. ProxiCraft had patched `GetItemCount(string)` but the radial menu used a different overload.
+### Bug Report (All We Know)
+> "Radial menu reload option is greyed out even though I have ammo in nearby containers. Regular crafting sees the ammo fine." — User falkon311
 
-### Time Spent Debugging
-~2 hours tracing through UI code
+### Starting Point
+We patched `XUiM_PlayerInventory.GetItemCount()` to include container items. Crafting works. Radial menu doesn't. Why?
 
-### The Query That Would Have Caught It
+### Exploratory Query #1: What calls GetItemCount?
+**Thinking:** "Maybe the radial menu uses a different code path?"
+
 ```bash
-dotnet run -- callgraph.db impl GetItemCount
+dotnet run -- callgraph.db callers GetItemCount
 ```
 
-### Output
+**Output:**
 ```
-Finding all implementations of 'GetItemCount':
-
-  type | signature | location
-  -----------+------------+------------
-  XUiM_PlayerInventory | GetItemCount(ItemValue) | XUiM_PlayerInventory.cs:522
-  XUiM_PlayerInventory | GetItemCount(int) | XUiM_PlayerInventory.cs:532  ← MISSED THIS!
-  Inventory | GetItemCount(ItemValue, bool, int, int, bool) | Inventory.cs:741
+Found 12 methods matching 'GetItemCount':
+  Bag.GetItemCount (GetItemCount(ItemValue, int, int, bool)) - Bag.cs:241
+  Bag.GetItemCount (GetItemCount(FastTags<TagGroup.Global>, int, int, bool)) - Bag.cs:255
+  Inventory.GetItemCount (GetItemCount(ItemValue, bool, int, int, bool)) - Inventory.cs:741
   ...
+  XUiM_PlayerInventory.GetItemCount (GetItemCount(ItemValue)) - XUiM_PlayerInventory.cs:522
+  XUiM_PlayerInventory.GetItemCount (GetItemCount(int)) - XUiM_PlayerInventory.cs:532
 ```
 
-### Follow-Up Query
+**Observation:** Wait—there are TWO `XUiM_PlayerInventory.GetItemCount` methods. Different signatures.
+
+### Exploratory Query #2: Who calls each overload?
+**Thinking:** "Which one did we patch? Which one does the radial menu use?"
+
 ```bash
 dotnet run -- callgraph.db callers "XUiM_PlayerInventory.GetItemCount"
 ```
 
-Shows `GetItemCount(int)` at line 532 is called by:
-- **ItemActionAttack.SetupRadial** ← The radial menu!
+**Output:**
+```
+═══ Callers of XUiM_PlayerInventory.GetItemCount ═══
+    Defined at: XUiM_PlayerInventory.cs:522   ← ItemValue overload
 
-### Time With Toolkit
-~30 seconds
+  caller | file_path | line_number
+  XUiC_IngredientEntry.GetBindingValueInternal | XUiC_IngredientEntry.cs | 143
+  XUiC_IngredientEntry.GetBindingValueInternal | XUiC_IngredientEntry.cs | 155
+  ... (crafting UI stuff)
+
+═══ Callers of XUiM_PlayerInventory.GetItemCount ═══
+    Defined at: XUiM_PlayerInventory.cs:532   ← int overload
+
+  caller | file_path | line_number
+  ItemActionAttack.SetupRadial | ItemActionAttack.cs | 1076   ← RADIAL MENU!
+```
+
+**Discovery:** The radial menu uses `GetItemCount(int)` at line 532. We only patched the `ItemValue` overload at line 522.
+
+### Resolution
+Patch both overloads.
+
+### Query Count: 2
+### Time: ~2 minutes of exploration
+### Did toolkit guide us? **Yes** — Listing overloads naturally led to checking callers of each.
 
 ---
 
-## Bug #3: Workstation "Free Crafting" Exploit
+## Test Case #2: "Workstation Items Never Consumed"
 
-### The Problem
-Items in workstation output slots counted as available materials but were never consumed—infinite crafting exploit. ProxiCraft removed items from `TileEntityWorkstation.Output[]`, but the UI had its own copy that overwrote our changes.
+### Bug Report (All We Know)
+> "Items in workstation output count as available for crafting but never get used up. I can craft infinitely!" — User Kaizlin
 
-### Time Spent Debugging
-~4 hours understanding the dual-buffer architecture
+### Starting Point
+We added workstation outputs to container counting. Counting works. But when we try to remove items via `TileEntityWorkstation.Output[slot] = empty`, it doesn't stick.
 
-### The Query That Would Have Caught It
+### Exploratory Query #1: What writes to workstation output?
+**Thinking:** "Maybe something is overwriting our changes?"
+
 ```bash
-dotnet run -- callgraph.db search "syncTEfromUI"
+dotnet run -- callgraph.db search "Output"
 ```
 
-### Output
-```
-Searching for: syncTEfromUI
+**Output:** (Too many results—Output is a common word)
 
+### Exploratory Query #2: More specific—workstation + set/write
+**Thinking:** "Let me look for workstation slot modification"
+
+```bash
+dotnet run -- callgraph.db search "SetOutputStacks"
+```
+
+**Output:**
+```
   method | file_path | context
-  -----------+------------+-----------
-  XUiC_WorkstationWindowGroup.OnClose | XUiC_WorkstationWindowGroup.cs:396 | 
-    ...activeKeyDown = false;
-    >>>syncTEfromUI<<<();
-    WorkstationData.SetUserAccessing...
-    
-  XUiC_WorkstationWindowGroup.Update | XUiC_WorkstationWindowGroup.cs:192 |
-    ...wasCrafting = flag;
-    >>>syncTEfromUI<<<();
+  XUiC_WorkstationWindowGroup.syncTEfromUI | XUiC_WorkstationWindowGroup.cs:279 |
+    ...XUiM_Workstation.>>>SetOutputStacks<<<(OutputGrid.GetSlots());
 ```
 
-### Follow-Up Query
+**Observation:** There's a `syncTEfromUI` method that calls `SetOutputStacks`. What is this sync about?
+
+### Exploratory Query #3: What does syncTEfromUI do?
 ```bash
 dotnet run -- callgraph.db callees "XUiC_WorkstationWindowGroup.syncTEfromUI"
 ```
 
-### Output
+**Output:**
 ```
-Internal calls (to game code):
   callee | at_line
-  -----------+-----------
-  XUiM_Workstation.SetOutputStacks | 279  ← OVERWRITES TileEntity!
-  XUiC_ItemStackGrid.GetSlots | 279       ← FROM UI DATA!
+  XUiM_Workstation.SetToolStacks | 271
+  XUiC_ItemStackGrid.GetSlots | 271
+  XUiM_Workstation.SetInputStacks | 275
+  XUiC_ItemStackGrid.GetSlots | 275
+  XUiM_Workstation.SetOutputStacks | 279   ← Writes to TileEntity!
+  XUiC_ItemStackGrid.GetSlots | 279        ← FROM the UI grid!
 ```
 
-**Reveals:** `syncTEfromUI` copies UI grid → TileEntity. Any direct TileEntity modifications get overwritten.
+**Observation:** This copies UI grid data TO the TileEntity. So UI is the source of truth?
 
-### Time With Toolkit
-~1 minute
+### Exploratory Query #4: When does this sync run?
+```bash
+dotnet run -- callgraph.db callers syncTEfromUI
+```
+
+**Output:**
+```
+  caller | file_path | line_number
+  XUiC_WorkstationWindowGroup.OnClose | XUiC_WorkstationWindowGroup.cs | 396
+  XUiC_WorkstationWindowGroup.Update | XUiC_WorkstationWindowGroup.cs | 192
+```
+
+**Discovery:** `syncTEfromUI` runs on `OnClose` AND during `Update` (while crafting)! Any direct TileEntity modifications get overwritten by the UI's copy.
+
+### Resolution
+Must modify BOTH the UI grid slots AND the TileEntity, or our changes get clobbered.
+
+### Query Count: 4
+### Time: ~4 minutes of exploration
+### Did toolkit guide us? **Yes** — Search → found sync method → callees revealed the overwrite → callers showed when it runs.
 
 ---
 
-## Bug #6: CanReload - Incomplete Inheritance Coverage
+## Test Case #3: "Pistols Can't Reload, But Rocket Launcher Can"
 
-### The Problem
-ProxiCraft patched `ItemActionLauncher.CanReload()` but missed `ItemActionRanged.CanReload()` which handles most weapons (pistols, rifles, shotguns).
+### Bug Report (All We Know)
+> "Container ammo works for rocket launcher reload, but my pistol still says 'no ammo' even with bullets in the crate next to me."
 
-### Time Spent Debugging
-~1 hour wondering why only rocket launchers worked
+### Starting Point
+We patched `ItemActionLauncher.CanReload()`. Rocket launcher works. Pistol doesn't. Different weapon classes?
 
-### The Query That Would Have Caught It
+### Exploratory Query #1: What classes have CanReload?
+**Thinking:** "Maybe pistol uses a different class?"
+
 ```bash
 dotnet run -- callgraph.db impl CanReload
 ```
 
-### Output
+**Output:**
 ```
-Finding all implementations of 'CanReload':
-
   type | base_type | signature | modifier | location
-  -----------+------------+------------+------------+-----------
   ItemActionAttack | ItemAction | CanReload(ItemActionData) | virtual | ItemActionAttack.cs:227
-  ItemActionRanged | ItemActionAttack | CanReload(ItemActionData) | override | ItemActionRanged.cs:737  ← MISSED!
+  ItemActionRanged | ItemActionAttack | CanReload(ItemActionData) | override | ItemActionRanged.cs:737
   ItemActionCatapult | ItemActionLauncher | CanReload(ItemActionData) | override | ItemActionCatapult.cs:221
 
 Inheritance relationships:
   type | inherits_from
-  -----------+--------------
-  ItemActionRanged | ItemActionAttack  ← Different branch than ItemActionLauncher!
+  ItemActionRanged | ItemActionAttack
+  ItemActionCatapult | ItemActionLauncher
 ```
 
-**Reveals:** There are TWO separate inheritance branches for `CanReload`. Patching one doesn't cover the other.
+**Discovery:** There are THREE implementations:
+- `ItemActionAttack.CanReload` (base, virtual)
+- `ItemActionRanged.CanReload` (override) — This is probably pistols/rifles!
+- `ItemActionCatapult.CanReload` (override) — Inherits from ItemActionLauncher
 
-### Time With Toolkit
-~30 seconds
+We only patched `ItemActionLauncher` but pistols use `ItemActionRanged` which inherits from `ItemActionAttack`, not `ItemActionLauncher`.
+
+### Resolution
+Patch `ItemActionRanged.CanReload` as well.
+
+### Query Count: 1
+### Time: ~1 minute
+### Did toolkit guide us? **Yes** — `impl` immediately showed the inheritance split.
 
 ---
 
-## Bug #8c: Item Duplication from Event Re-entrancy
+## Test Case #4: "Items Duplicating When Moving Between Container and Inventory"
 
-### The Problem
-Firing `OnBackpackItemsChangedInternal` during item transfers caused items to duplicate. The event triggered challenge recounts which interfered with ongoing transfers.
+### Bug Report (All We Know)
+> "When I move items between my inventory and a storage crate, sometimes items duplicate. Started happening after installing ProxiCraft."
 
-### Time Spent Debugging  
-~3 hours of careful stepping through to find re-entrancy
+### Starting Point
+We added code to fire `OnBackpackItemsChangedInternal` when container slots change (to trigger challenge recounts). Duplication started after this.
 
-### The Query That Would Have Caught It
+### Exploratory Query #1: What listens to this event?
+**Thinking:** "Maybe something reacts badly to this event during transfers?"
+
 ```bash
-dotnet run -- callgraph.db callees OnBackpackItemsChangedInternal
+dotnet run -- callgraph.db search "OnBackpackItemsChangedInternal"
 ```
 
-(This specific event handler isn't directly traceable in static analysis, but the pattern is clear)
-
-### Better Query
-```bash
-dotnet run -- callgraph.db search "DragAndDropItemChanged"
-```
-
-### Output
+**Output:**
 ```
   method | context
-  -----------+-----------
-  ChallengeObjectiveGather.HandleAddHooks | 
-    ...playerInventory.Backpack.OnBackpackItemsChangedInternal += ItemsChangedInternal;
+  ChallengeObjectiveGather.HandleAddHooks |
+    ...playerInventory.Backpack.>>>OnBackpackItemsChangedInternal<<< += ItemsChangedInternal;
     playerInventory.Toolbelt.OnToolbeltItemsChangedInternal += ItemsChangedInternal;
-    player.>>>DragAndDropItemChanged<<< += ItemsChangedInternal;
+    player.DragAndDropItemChanged += ItemsChangedInternal;
 ```
 
-**Reveals:** Challenges already listen to `DragAndDropItemChanged`! Use that instead of `OnBackpackItemsChangedInternal`.
+**Observation:** Challenges subscribe to THREE events: backpack, toolbelt, AND `DragAndDropItemChanged`. 
 
-### Time With Toolkit
-~1 minute
+### Exploratory Query #2: What else triggers from backpack events?
+```bash
+dotnet run -- callgraph.db search "OnBackpackItemsChanged"
+```
+
+**Output:** (Multiple handlers, complex chain)
+
+### Thinking Shift
+Wait—the search showed challenges ALREADY listen to `DragAndDropItemChanged`. What if we fire that instead? It's probably safer since it's designed for drag operations.
+
+### Exploratory Query #3: Is DragAndDropItemChanged used elsewhere?
+```bash
+dotnet run -- callgraph.db callers DragAndDropItemChanged
+```
+
+**Output:** Various UI components that manage item dragging.
+
+**Insight:** `DragAndDropItemChanged` is specifically for item movement operations. `OnBackpackItemsChangedInternal` might trigger inventory recalculations that interfere with ongoing transfers.
+
+### Resolution
+Use `DragAndDropItemChanged` instead of `OnBackpackItemsChangedInternal`.
+
+### Query Count: 3
+### Time: ~3 minutes
+### Did toolkit guide us? **Partially** — Found the alternative event, but understanding WHY one causes duplication and the other doesn't required reasoning about timing.
 
 ---
 
-## Trader Selling: The Duplication Risk
+## Test Case #5: "Block Upgrades Not Taking Materials from Containers"
 
-### The Problem
-PREFIX patch added items to slot, but vanilla could exit early (full inventory, trader limits, etc.) leaving items duplicated.
+### Bug Report (All We Know)
+> "When I upgrade a wood frame to cobblestone, it shows I have the materials (counting containers), but it only takes from my inventory. If I don't have enough in inventory, upgrade fails even though containers have plenty."
 
-### Time Spent Debugging
-Several hours, ultimately led to feature removal
+### Starting Point
+We patched the "do I have enough?" checks. But the "remove items" step must be separate.
 
-### The Query That Would Have Revealed The Risk
+### Exploratory Query #1: What handles block repair/upgrade?
 ```bash
-dotnet run -- callgraph.db callees "ItemActionEntrySell.OnActivated"
+dotnet run -- callgraph.db search "repair AND remove"
 ```
 
-### Output (Partial)
-```
-  callee | at_line
-  -----------+-----------
-  GameManager.ShowTooltip | 124  ← After this: return (early exit!)
-  GameManager.ShowTooltip | 135  ← After this: return (early exit!)
-  GameManager.ShowTooltip | 162  ← After this: return (early exit!)
-  GameManager.ShowTooltip | 170  ← After this: return (early exit!)
-```
+**Output:** (Not great results)
 
-**Reveals:** 4+ calls to `ShowTooltip` followed by early returns. Each is a potential duplication point if PREFIX modifies state.
-
-### The Search That Confirms It
+### Exploratory Query #2: Try more specific
 ```bash
-dotnet run -- callgraph.db sql "
-  SELECT COUNT(*) as exits 
-  FROM method_bodies mb 
-  JOIN methods m ON mb.method_id = m.id 
-  WHERE m.name = 'OnActivated' 
-    AND mb.body LIKE '%ItemActionEntrySell%'
-    AND mb.body LIKE '%return;%'
-"
+dotnet run -- callgraph.db search "ItemActionRepair"
 ```
 
-Shows multiple `return;` statements = multiple early exit points.
-
-### Time With Toolkit
-~2 minutes to understand the risk pattern
-
----
-
-## Bug #2: Block Upgrades Not Consuming Materials
-
-### The Problem
-Block upgrades showed materials available but didn't consume them from containers. ProxiCraft patched availability checks but not removal.
-
-### Time Spent Debugging
-~1 hour
-
-### The Query That Would Have Caught It
-```bash
-dotnet run -- callgraph.db search "removeRequiredResource"
+**Output:**
+```
+  method | context
+  ItemActionRepair.OnHoldingUpdate |
+    ...if (CheckInput(actionData, num, ...))
+    {
+        >>>removeRequiredResource<<<(_actionData, ingredientEntries[i]);
 ```
 
-### Output
-```
-  method | file_path | context
-  -----------+------------+-----------
-  ItemActionRepair.OnHoldingUpdate | ItemActionRepair.cs:350 |
-    ...>>>removeRequiredResource<<<(_actionData, ingredientEntries[i]);
-```
+**Observation:** Found `removeRequiredResource` — this is likely the removal step.
 
-Then:
+### Exploratory Query #3: What does removeRequiredResource call?
 ```bash
 dotnet run -- callgraph.db callees "ItemActionRepair.removeRequiredResource"
 ```
 
-### Output
+**Output:**
 ```
   callee | at_line
-  -----------+-----------
   EntityAlive.get_inventory | 490
-  Inventory.DecItem | 495      ← Only removes from inventory!
-  Bag.DecItem | 498           ← Only removes from bag!
+  Inventory.DecItem | 495
+  Bag.DecItem | 498
 ```
 
-**Reveals:** `removeRequiredResource` only looks at player inventory/bag, not containers. Must patch this too.
+**Discovery:** `removeRequiredResource` calls `inventory.DecItem` and `bag.DecItem` — player inventory only! No container support.
 
-### Time With Toolkit
-~1 minute
+### Resolution
+Patch `removeRequiredResource` to also remove from containers.
+
+### Query Count: 3
+### Time: ~3 minutes
+### Did toolkit guide us? **Yes** — Search found the method name, callees showed it only touches player inventory.
 
 ---
 
-## Summary: Bug Detection Comparison
+## Honest Assessment
 
-| Bug | Manual Debug Time | Toolkit Time | Speedup |
-|-----|------------------|--------------|---------|
-| #1 Radial Menu Overload | 2 hours | 30 seconds | 240x |
-| #3 Workstation Dual-Buffer | 4 hours | 1 minute | 240x |
-| #6 CanReload Inheritance | 1 hour | 30 seconds | 120x |
-| #8c Event Re-entrancy | 3 hours | 1 minute | 180x |
-| Trader Duplication Risk | Hours | 2 minutes | 60x+ |
-| #2 Block Upgrade Removal | 1 hour | 1 minute | 60x |
+### What the Toolkit Did Well
+1. **Finding overloads/implementations** — `impl` immediately reveals parallel code paths
+2. **Tracing call chains** — `callees` shows what a method actually does
+3. **Finding related code** — `search` locates methods by keyword when you don't know exact names
+4. **Revealing callers** — Shows which code paths use which methods
 
-**Average speedup: ~150x**
+### What Still Required Human Reasoning
+1. **Interpreting results** — Toolkit shows data, human must understand implications
+2. **Formulating queries** — Knowing WHAT to search for still requires domain intuition
+3. **Understanding timing** — Static analysis shows structure, not runtime behavior
+4. **Duplication root cause** — Toolkit found the alternative, but WHY one event causes duplication required deeper reasoning
 
----
+### Query Efficiency
 
-## Key Toolkit Commands for Mod Development
+| Bug | Queries Needed | Time | Would Have Found It? |
+|-----|---------------|------|---------------------|
+| Radial Menu Overload | 2 | 2 min | ✅ Yes |
+| Workstation Sync | 4 | 4 min | ✅ Yes |
+| CanReload Inheritance | 1 | 1 min | ✅ Yes |
+| Item Duplication | 3 | 3 min | ⚠️ Found alternative, not root cause |
+| Block Upgrade Removal | 3 | 3 min | ✅ Yes |
 
-### Before Patching a Method
-```bash
-# Find ALL implementations/overloads
-impl <method-name>
+### Realistic Speedup
+Original debugging took hours because it involved:
+- Reading decompiled source manually
+- Trial-and-error patching
+- Runtime debugging with breakpoints
 
-# Find ALL callers (who uses this?)
-callers <method-name>
-```
+Toolkit reduces the "find relevant code" phase from hours to minutes. The "understand and fix" phase still requires human expertise.
 
-### Understanding Write Paths
-```bash
-# What does this method modify?
-callees <method-name>
-
-# Search for sync/update patterns
-search "sync OR update OR flush"
-```
-
-### Detecting Unsafe Patterns
-```bash
-# Find early exits in target method
-search "return AND <target-method>"
-
-# Find event handlers
-search "<event-name>"
-```
-
-### Before Adding Container Support
-```bash
-# Find all overloads of item counting
-impl GetItemCount
-
-# Find removal methods that need patching
-search "DecItem OR RemoveItem"
-
-# Find UI sync patterns for workstations
-search "syncTEfromUI OR syncUIFromTE"
-```
-
----
-
-## Conclusion
-
-The toolkit transforms mod debugging from "guess and check" to "query and understand." The key insight: **most mod bugs stem from incomplete knowledge of the game's architecture.** The toolkit makes that architecture queryable.
-
-Every bug documented in ProxiCraft's research notes could have been identified in under 2 minutes with the right query. The time saved compounds—understanding gained from one query applies to future development.
+**Honest estimate: 10-50x speedup** on the discovery phase, not 150x on the entire process.
