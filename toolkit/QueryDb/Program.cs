@@ -11,6 +11,16 @@ if (!File.Exists(dbPath))
 using var conn = new SqliteConnection($"Data Source={dbPath}");
 conn.Open();
 
+// If second arg is provided, run it as custom SQL
+if (args.Length > 1)
+{
+    var customSql = string.Join(" ", args.Skip(1));
+    Console.WriteLine($"Running: {customSql}");
+    Console.WriteLine();
+    RunQuery(conn, customSql);
+    return;
+}
+
 Console.WriteLine($"Database: {dbPath}");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
