@@ -58,17 +58,25 @@ A SQLite-based toolkit combining call graph analysis + keyword search to dramati
 
 **Schema expanded with:** `mods`, `mod_types`, `mod_methods`, `mod_method_bodies`, `harmony_patches`, `xml_changes`, `mod_conflicts` tables.
 
-### Phase 5: CLI Query Tools 🔄 IN PROGRESS
+### Phase 5: CLI Query Tools ✅ COMPLETE
 **Pivoted to C# instead of Python** for simpler deployment (single executable, no Python runtime needed).
 
-**Implemented:**
-- `QueryDb/` — C# query tool with custom SQL support
-- Supports both default diagnostic queries and arbitrary SQL via command line
+**Implemented Commands:**
+- `QueryDb <db>` — Summary statistics (types, methods, calls, mods)
+- `QueryDb <db> sql "SELECT ..."` — Custom SQL queries
+- `QueryDb <db> callers <method>` — Find all callers with ambiguous name detection
+- `QueryDb <db> callees <method>` — Find internal + external calls made by a method
+- `QueryDb <db> search <keyword>` — FTS5 full-text search with snippet highlighting
+- `QueryDb <db> chain <from> <to>` — Recursive CTE path-finding (depth 10 limit)
+- `QueryDb <db> impl <method>` — Find all implementations/overrides with inheritance info
+- `QueryDb <db> compat` — Mod compatibility checker (Harmony + XML conflicts)
+- `QueryDb <db> perf [category]` — Performance analysis (updates/getcomponent/find/strings/linq)
+- `QueryDb <db> xml <name>` — XML definition lookup with code access references
 
-**Not yet implemented:**
-- `callers <method>` / `callees <method>` convenience commands
-- `chain <from> <to>` path finding (requires igraph or similar)
-- `compat <mod1> <mod2>` conflict reporting
+**Features:**
+- Method name disambiguation (shows all matches if name is ambiguous)
+- JSON output support (`--json` flag)
+- File path and line number references in all results
 
 ### Phase 6: Performance Analysis Queries 🆕 NEW CAPABILITY
 **Discovered during development — the database enables vanilla game performance analysis.**
@@ -698,7 +706,7 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 - [x] External call tracking for Unity/BCL boundary crossings
 - [x] **COMMIT: "feat: Comprehensive auto-discovery with 85% call resolution"**
 
-### Phase 2: Basic Queries (Commits 5-7) 🔄 PARTIAL
+### Phase 2: Basic Queries (Commits 5-7) ✅ COMPLETE
 
 #### Commit 5: C# Query Tool (Pivoted from Python) ✅
 - [x] Create `QueryDb/` C# project
@@ -706,15 +714,16 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 - [x] Custom SQL support via command line
 - [x] **COMMIT: "Add C# query tool with custom SQL support"**
 
-#### Commit 6: Direct callers/callees queries ⏳ TODO
-- [ ] Implement `callers <method>` - convenience wrapper
-- [ ] Implement `callees <method>` - convenience wrapper
-- [ ] Handle ambiguous method names (list matches)
+#### Commit 6: Direct callers/callees queries ✅
+- [x] Implement `callers <method>` - convenience wrapper
+- [x] Implement `callees <method>` - convenience wrapper
+- [x] Handle ambiguous method names (list matches)
+- [x] **COMMIT: "Add comprehensive CLI commands to QueryDb"**
 
-#### Commit 7: Path finding ⏳ TODO
-- [ ] Implement `chain <from> <to>` - shortest path
-- [ ] Evaluate: igraph (Python) vs QuikGraph (C#) vs raw SQL CTE
-- [ ] Output path as JSON with file locations
+#### Commit 7: Path finding ✅
+- [x] Implement `chain <from> <to>` - recursive CTE-based path finding
+- [x] Chose SQL CTE approach (no external library needed)
+- [x] Output path as indented tree view
 
 ### Phase 3: Full-Text Search (Commits 8-9) ✅ COMPLETE
 
@@ -727,7 +736,7 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 #### Commit 9: Search via SQL ✅
 - [x] FTS5 queryable via custom SQL in QueryDb
 - [x] Porter stemming enabled for flexible matching
-- [ ] ⏳ Convenience `search <keyword>` command wrapper
+- [x] Convenience `search <keyword>` command wrapper with snippet highlighting
 
 ### Phase 4: XML Game Data (NEW PHASE) ✅ COMPLETE
 
@@ -744,7 +753,7 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 - [x] Link code to XML properties (746 patterns found)
 - [x] **COMMIT: included in above**
 
-### Phase 5: Mod Compatibility (Commits 12-15) ✅ FRAMEWORK COMPLETE
+### Phase 5: Mod Compatibility (Commits 12-15) ✅ COMPLETE
 
 #### Commit 12: Harmony patch parser ✅
 - [x] Create `ModParser.cs` - find [HarmonyPatch] attributes
@@ -760,42 +769,46 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 - [x] Store in `xml_changes` table
 - [x] **COMMIT: included in XML commit**
 
-#### Commit 14: Direct conflict detection ⏳ TODO
-- [ ] Implement `compat` command 
-- [ ] SQL: Find same-method patches across mods
-- [ ] SQL: Find same-xpath changes across mods
-- [ ] Output conflict report JSON
+#### Commit 14: Direct conflict detection ✅
+- [x] Implement `compat` command
+- [x] SQL: Find same-method patches across mods  
+- [x] SQL: Find same-xpath changes across mods
+- [x] Output conflict report with exact locations
+- [x] **COMMIT: "Add comprehensive CLI commands to QueryDb"**
 
-#### Commit 15: Load order inference ⏳ TODO
-- [ ] Analyze patch types (Transpiler vs Prefix/Postfix)
-- [ ] Generate load order recommendations
-- [ ] Add to compat output
+#### Commit 15: Load order inference ✅
+- [x] Analyze patch types (Transpiler vs Prefix/Postfix)
+- [x] Generate load order recommendations
+- [x] Add to compat output
 
-### Phase 6: Polish & Documentation (Commits 16-18) ⏳ TODO
+### Phase 6: Polish & Documentation (Commits 16-18) 🔄 PARTIAL
 
-#### Commit 16: Type hierarchy queries
-- [ ] Add `implementations <method>` command
-- [ ] Query inheritance to find all overrides
-- [ ] Helps catch "patched one override, missed another" bugs
+#### Commit 16: Type hierarchy queries ✅
+- [x] Add `impl <method>` command
+- [x] Query to find all overrides with inheritance info
+- [x] Shows modifier (virtual/override/abstract) and base type
+- [x] **COMMIT: "Add comprehensive CLI commands to QueryDb"**
 
-#### Commit 17: AI context document
+#### Commit 17: AI context document ⏳ TODO
 - [ ] Create `AI_CONTEXT.md` with usage examples
 - [ ] Document query patterns for common problems
 - [ ] Include expected output formats
 
-#### Commit 18: README and integration
+#### Commit 18: README and integration ⏳ TODO
 - [ ] Update main README with toolkit usage
 - [ ] Add PowerShell wrapper to call toolkit after decompile
 - [ ] End-to-end test: decompile → build DB → query
 
-### Phase 7: Performance Analysis (NEW PHASE) ⏳ QUERIES WORK, TOOLING TODO
+### Phase 7: Performance Analysis (NEW PHASE) ✅ COMPLETE
 
-Database already supports these queries via raw SQL:
-- [x] Find Update methods with expensive Unity calls
-- [x] Find largest/most complex Update methods
-- [x] Find string allocations in hot paths
-- [ ] ⏳ Add convenience commands for common performance queries
-- [ ] ⏳ Add pre-built "performance audit" report
+Database supports comprehensive performance queries via `perf` command:
+- [x] `perf updates` — Find largest Update/LateUpdate/FixedUpdate methods
+- [x] `perf getcomponent` — Find Update methods with expensive GetComponent calls
+- [x] `perf find` — Find methods using FindObjectsOfType (O(n) scan)
+- [x] `perf strings` — Find Update methods with string allocations
+- [x] `perf linq` — Find LINQ usage in hot paths
+- [x] `perf` (no arg) — Run all categories
+- [x] **COMMIT: "Add comprehensive CLI commands to QueryDb"**
 
 ---
 
