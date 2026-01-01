@@ -1,3 +1,4 @@
 # Ignore decompiled output (users generate their own)
 7D2DCodebase/
 7D2DCodebase_*/
+test.db
