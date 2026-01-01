@@ -538,6 +538,25 @@ public class RoslynParser
     public IReadOnlyDictionary<string, long> SignatureToMethodId => _signatureToMethodId;
     
     /// <summary>
+    /// Get method symbol to ID mappings (filtered view of SymbolToId).
+    /// </summary>
+    public Dictionary<IMethodSymbol, long> MethodSymbolToId
+    {
+        get
+        {
+            var result = new Dictionary<IMethodSymbol, long>(SymbolEqualityComparer.Default);
+            foreach (var kvp in _symbolToId)
+            {
+                if (kvp.Key is IMethodSymbol methodSymbol)
+                {
+                    result[methodSymbol] = kvp.Value;
+                }
+            }
+            return result;
+        }
+    }
+    
+    /// <summary>
     /// Get the compilation for call extraction (available after ExtractToDatabase).
     /// </summary>
     public CSharpCompilation? Compilation => _compilation;
