@@ -301,6 +301,119 @@ CREATE INDEX IF NOT EXISTS idx_conflicts_mod2 ON mod_conflicts(mod2_id);
 CREATE INDEX IF NOT EXISTS idx_conflicts_type ON mod_conflicts(conflict_type);
 
 -- ============================================================================
+-- EVENT FLOW ANALYSIS: Track event subscriptions and invocations
+-- ============================================================================
+
+-- Event subscriptions: who listens to what events
+CREATE TABLE IF NOT EXISTS event_subscriptions (
+    id INTEGER PRIMARY KEY,
+    subscriber_method_id INTEGER,       -- Method that contains the subscription (FK to methods or mod_methods)
+    subscriber_type TEXT NOT NULL,      -- Full type name containing the subscriber
+    event_owner_type TEXT NOT NULL,     -- Type that owns the event (e.g., EntityPlayerLocal)
+    event_name TEXT NOT NULL,           -- Event field name (e.g., DragAndDropItemChanged)
+    handler_method TEXT NOT NULL,       -- Method invoked when event fires
+    handler_type TEXT,                  -- Type containing the handler (if different from subscriber)
+    subscription_type TEXT DEFAULT 'add', -- 'add' (+=) or 'remove' (-=)
+    is_mod INTEGER DEFAULT 0,           -- 1 if from mod code
+    mod_id INTEGER,                     -- FK to mods if is_mod=1
+    file_path TEXT,
+    line_number INTEGER,
+    FOREIGN KEY (subscriber_method_id) REFERENCES methods(id),
+    FOREIGN KEY (mod_id) REFERENCES mods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eventsub_event ON event_subscriptions(event_owner_type, event_name);
+CREATE INDEX IF NOT EXISTS idx_eventsub_handler ON event_subscriptions(handler_method);
+CREATE INDEX IF NOT EXISTS idx_eventsub_subscriber ON event_subscriptions(subscriber_type);
+CREATE INDEX IF NOT EXISTS idx_eventsub_mod ON event_subscriptions(mod_id);
+
+-- Event invocations: where events are fired
+CREATE TABLE IF NOT EXISTS event_fires (
+    id INTEGER PRIMARY KEY,
+    firing_method_id INTEGER,           -- Method that fires the event
+    firing_type TEXT NOT NULL,          -- Type containing the fire statement
+    event_owner_type TEXT NOT NULL,     -- Type that owns the event
+    event_name TEXT NOT NULL,           -- Event being fired
+    fire_method TEXT DEFAULT 'Invoke',  -- 'Invoke', 'DynamicInvoke', or 'direct'
+    is_conditional INTEGER DEFAULT 0,   -- 1 if fired conditionally (null check etc)
+    is_mod INTEGER DEFAULT 0,           -- 1 if from mod code
+    mod_id INTEGER,                     -- FK to mods if is_mod=1
+    file_path TEXT,
+    line_number INTEGER,
+    FOREIGN KEY (firing_method_id) REFERENCES methods(id),
+    FOREIGN KEY (mod_id) REFERENCES mods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eventfire_event ON event_fires(event_owner_type, event_name);
+CREATE INDEX IF NOT EXISTS idx_eventfire_firing ON event_fires(firing_type);
+CREATE INDEX IF NOT EXISTS idx_eventfire_mod ON event_fires(mod_id);
+
+-- Event declarations: what events exist and their signatures
+CREATE TABLE IF NOT EXISTS event_declarations (
+    id INTEGER PRIMARY KEY,
+    type_id INTEGER,                    -- FK to types (owning type)
+    owning_type TEXT NOT NULL,          -- Full type name
+    event_name TEXT NOT NULL,           -- Event field name
+    delegate_type TEXT,                 -- Delegate type (e.g., Action, EventHandler)
+    is_public INTEGER DEFAULT 1,
+    file_path TEXT,
+    line_number INTEGER,
+    FOREIGN KEY (type_id) REFERENCES types(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eventdecl_type ON event_declarations(owning_type);
+CREATE INDEX IF NOT EXISTS idx_eventdecl_name ON event_declarations(event_name);
+
+-- ============================================================================
+-- BEHAVIORAL FLOWS: Pre-computed cause-effect chains
+-- ============================================================================
+
+-- Pre-computed flows from triggers to outcomes
+CREATE TABLE IF NOT EXISTS behavioral_flows (
+    id INTEGER PRIMARY KEY,
+    trigger_description TEXT NOT NULL,  -- "Player moves item to container"
+    trigger_type TEXT,                  -- 'method_call', 'event_fire', 'user_action'
+    trigger_method_id INTEGER,          -- Initial method (FK to methods)
+    trigger_event TEXT,                 -- Or initial event name
+    outcome_description TEXT NOT NULL,  -- "Challenge progress updates"
+    outcome_method_id INTEGER,          -- Final method affected
+    flow_json TEXT NOT NULL,            -- Full flow as JSON tree structure
+    mods_involved TEXT,                 -- JSON array of mod names involved
+    verified INTEGER DEFAULT 0,         -- 1 if manually verified working
+    notes TEXT,                         -- Additional context
+    FOREIGN KEY (trigger_method_id) REFERENCES methods(id),
+    FOREIGN KEY (outcome_method_id) REFERENCES methods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_flow_trigger ON behavioral_flows(trigger_description);
+CREATE INDEX IF NOT EXISTS idx_flow_outcome ON behavioral_flows(outcome_description);
+
+-- ============================================================================
+-- EFFECTIVE BEHAVIOR: Methods with patches applied
+-- ============================================================================
+
+-- Cached effective behavior of methods with patches
+CREATE TABLE IF NOT EXISTS effective_methods (
+    id INTEGER PRIMARY KEY,
+    method_id INTEGER NOT NULL UNIQUE,  -- FK to methods (game method)
+    vanilla_behavior TEXT,              -- Summary of what vanilla code does
+    has_prefix INTEGER DEFAULT 0,
+    has_postfix INTEGER DEFAULT 0,
+    has_transpiler INTEGER DEFAULT 0,
+    has_finalizer INTEGER DEFAULT 0,
+    prefix_mods TEXT,                   -- JSON: [{mod, priority, effect}]
+    postfix_mods TEXT,                  -- JSON: [{mod, priority, effect}]
+    transpiler_mods TEXT,               -- JSON: [{mod, effect}]
+    effective_behavior TEXT,            -- Summary of net effect with all patches
+    affected_callers INTEGER DEFAULT 0, -- Count of methods that call this
+    last_updated TEXT,                  -- ISO timestamp
+    FOREIGN KEY (method_id) REFERENCES methods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_effective_method ON effective_methods(method_id);
+CREATE INDEX IF NOT EXISTS idx_effective_patched ON effective_methods(has_prefix, has_postfix, has_transpiler);
+
+-- ============================================================================
 -- METADATA
 -- ============================================================================
 
@@ -311,7 +424,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 -- Store version info, build timestamps, etc.
 -- Example entries:
--- ('schema_version', '1')
+-- ('schema_version', '2')  -- Updated for event tracking
 -- ('game_version', 'V1.1 b14')
 -- ('build_timestamp', '2024-12-31T10:30:00')
 -- ('source_path', 'C:\...\7D2DCodebase')

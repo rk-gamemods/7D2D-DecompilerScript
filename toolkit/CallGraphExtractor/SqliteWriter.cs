@@ -406,6 +406,100 @@ public class SqliteWriter : IDisposable
     }
     
     // =========================================================================
+    // Event Flow Tables
+    // =========================================================================
+    
+    public void InsertEventDeclaration(string owningType, string eventName, string? delegateType,
+                                        bool isPublic, string? filePath, int? lineNumber)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR IGNORE INTO event_declarations (owning_type, event_name, delegate_type, is_public, file_path, line_number)
+            VALUES (@owning_type, @event_name, @delegate_type, @is_public, @file_path, @line_number)
+        ";
+        
+        cmd.Parameters.AddWithValue("@owning_type", owningType);
+        cmd.Parameters.AddWithValue("@event_name", eventName);
+        cmd.Parameters.AddWithValue("@delegate_type", delegateType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@is_public", isPublic ? 1 : 0);
+        cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+    
+    public void InsertEventSubscription(string subscriberType, string eventOwnerType, string eventName,
+                                         string handlerMethod, string? handlerType, string subscriptionType,
+                                         bool isMod, long? modId, string? filePath, int? lineNumber)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO event_subscriptions (subscriber_type, event_owner_type, event_name, handler_method, 
+                                             handler_type, subscription_type, is_mod, mod_id, file_path, line_number)
+            VALUES (@subscriber_type, @event_owner_type, @event_name, @handler_method, 
+                    @handler_type, @subscription_type, @is_mod, @mod_id, @file_path, @line_number)
+        ";
+        
+        cmd.Parameters.AddWithValue("@subscriber_type", subscriberType);
+        cmd.Parameters.AddWithValue("@event_owner_type", eventOwnerType);
+        cmd.Parameters.AddWithValue("@event_name", eventName);
+        cmd.Parameters.AddWithValue("@handler_method", handlerMethod);
+        cmd.Parameters.AddWithValue("@handler_type", handlerType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@subscription_type", subscriptionType);
+        cmd.Parameters.AddWithValue("@is_mod", isMod ? 1 : 0);
+        cmd.Parameters.AddWithValue("@mod_id", modId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+    
+    public void InsertEventFire(string firingType, string eventOwnerType, string eventName,
+                                 string fireMethod, bool isConditional, bool isMod, long? modId,
+                                 string? filePath, int? lineNumber)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO event_fires (firing_type, event_owner_type, event_name, fire_method, 
+                                     is_conditional, is_mod, mod_id, file_path, line_number)
+            VALUES (@firing_type, @event_owner_type, @event_name, @fire_method, 
+                    @is_conditional, @is_mod, @mod_id, @file_path, @line_number)
+        ";
+        
+        cmd.Parameters.AddWithValue("@firing_type", firingType);
+        cmd.Parameters.AddWithValue("@event_owner_type", eventOwnerType);
+        cmd.Parameters.AddWithValue("@event_name", eventName);
+        cmd.Parameters.AddWithValue("@fire_method", fireMethod);
+        cmd.Parameters.AddWithValue("@is_conditional", isConditional ? 1 : 0);
+        cmd.Parameters.AddWithValue("@is_mod", isMod ? 1 : 0);
+        cmd.Parameters.AddWithValue("@mod_id", modId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+    
+    public void InsertBehavioralFlow(string triggerDesc, string? triggerType, long? triggerMethodId,
+                                      string? triggerEvent, string outcomeDesc, long? outcomeMethodId,
+                                      string flowJson, string? modsInvolved)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO behavioral_flows (trigger_description, trigger_type, trigger_method_id, trigger_event,
+                                          outcome_description, outcome_method_id, flow_json, mods_involved)
+            VALUES (@trigger_desc, @trigger_type, @trigger_method_id, @trigger_event,
+                    @outcome_desc, @outcome_method_id, @flow_json, @mods_involved)
+        ";
+        
+        cmd.Parameters.AddWithValue("@trigger_desc", triggerDesc);
+        cmd.Parameters.AddWithValue("@trigger_type", triggerType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@trigger_method_id", triggerMethodId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@trigger_event", triggerEvent ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@outcome_desc", outcomeDesc);
+        cmd.Parameters.AddWithValue("@outcome_method_id", outcomeMethodId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@flow_json", flowJson);
+        cmd.Parameters.AddWithValue("@mods_involved", modsInvolved ?? (object)DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+    
+    // =========================================================================
     // Dispose
     // =========================================================================
     

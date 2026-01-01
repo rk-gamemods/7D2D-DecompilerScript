@@ -206,11 +206,35 @@ class Program
         Console.WriteLine($"  Extracted in {propAccessTime.TotalSeconds:F1}s");
         Console.WriteLine();
         
-        // Step 9: Parse mods (if provided)
+        // Step 9: Extract event subscriptions and fires (for behavioral flow analysis)
+        Console.WriteLine("Step 8: Extracting event flows");
+        Console.WriteLine("───────────────────────────────────────");
+        var eventStart = stopwatch.Elapsed;
+        var eventExtractor = new EventFlowExtractor(db, verbose);
+        
+        foreach (var sourceDir in parser.SourceDirectories)
+        {
+            Console.WriteLine($"  Scanning: {sourceDir.AssemblyName}");
+            foreach (var syntaxTree in parser.Compilation!.SyntaxTrees)
+            {
+                var filePath = syntaxTree.FilePath;
+                if (!filePath.StartsWith(sourceDir.Path)) continue;
+                
+                var relativePath = Path.GetRelativePath(sourceDir.Path, filePath);
+                var semanticModel = parser.Compilation.GetSemanticModel(syntaxTree);
+                eventExtractor.ExtractFromTree(syntaxTree, semanticModel, relativePath, isMod: false);
+            }
+        }
+        eventExtractor.PrintSummary();
+        var eventTime = stopwatch.Elapsed - eventStart;
+        Console.WriteLine($"  Extracted in {eventTime.TotalSeconds:F1}s");
+        Console.WriteLine();
+        
+        // Step 10: Parse mods (if provided)
         int modCount = 0, modPatchCount = 0, modXmlChangeCount = 0;
         if (mods != null && mods.Length > 0)
         {
-            Console.WriteLine("Step 8: Parsing mods");
+            Console.WriteLine("Step 9: Parsing mods");
             Console.WriteLine("───────────────────────────────────────");
             var modStart = stopwatch.Elapsed;
             var modParser = new ModParser(db, verbose);
@@ -275,6 +299,9 @@ class Program
             Console.WriteLine($"    XML definitions: {xmlDefinitionCount:N0}");
         }
         Console.WriteLine($"    XML property accesses: {propAccessExtractor.TotalAccessCount:N0}");
+        Console.WriteLine($"    Event declarations: {eventExtractor.DeclarationCount:N0}");
+        Console.WriteLine($"    Event subscriptions: {eventExtractor.SubscriptionCount:N0}");
+        Console.WriteLine($"    Event fires: {eventExtractor.FireCount:N0}");
         if (modCount > 0)
         {
             Console.WriteLine($"    Mods parsed: {modCount}");
