@@ -72,12 +72,29 @@ class Program
         var csFiles = source.GetFiles("*.cs", SearchOption.AllDirectories);
         Console.WriteLine($"Found {csFiles.Length} C# files to analyze");
 
+        // Delete existing database if present
+        if (output.Exists)
+        {
+            Console.WriteLine($"Removing existing database: {output.FullName}");
+            output.Delete();
+        }
+
+        // Initialize database
+        Console.WriteLine("Initializing database...");
+        using var db = new SqliteWriter(output.FullName);
+        db.Initialize();
+        
+        // Store metadata
+        db.SetMetadata("source_path", source.FullName);
+        db.SetMetadata("build_timestamp", DateTime.UtcNow.ToString("o"));
+        db.SetMetadata("file_count", csFiles.Length.ToString());
+        
+        Console.WriteLine("Database initialized with schema.");
+
         // TODO: Implement in subsequent commits
-        // 1. Initialize SQLite database with schema
-        // 2. Create Roslyn compilation
-        // 3. Parse all files, extract methods
-        // 4. Extract call relationships
-        // 5. Write to database
+        // 2. Create Roslyn compilation (Commit 3)
+        // 3. Parse all files, extract methods (Commit 3)
+        // 4. Extract call relationships (Commit 4)
 
         Console.WriteLine();
         Console.WriteLine("Extraction complete!");
