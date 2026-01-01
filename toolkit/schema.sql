@@ -83,6 +83,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS method_bodies USING fts5(
 );
 
 -- ============================================================================
+-- EXTERNAL CALLS: Calls to Unity, BCL, third-party libraries
+-- ============================================================================
+
+-- Track calls that go outside our codebase (into Unity, System, etc.)
+-- These are the "boundary crossings" where crashes often originate
+CREATE TABLE IF NOT EXISTS external_calls (
+    id INTEGER PRIMARY KEY,
+    caller_id INTEGER NOT NULL,         -- FK to methods (game method making the call)
+    target_assembly TEXT,               -- "UnityEngine", "System", "mscorlib", etc.
+    target_type TEXT NOT NULL,          -- Full type name
+    target_method TEXT NOT NULL,        -- Method name
+    target_signature TEXT,              -- Full signature if resolvable
+    file_path TEXT,                     -- Where the call occurs
+    line_number INTEGER,
+    FOREIGN KEY (caller_id) REFERENCES methods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_external_caller ON external_calls(caller_id);
+CREATE INDEX IF NOT EXISTS idx_external_assembly ON external_calls(target_assembly);
+CREATE INDEX IF NOT EXISTS idx_external_target ON external_calls(target_type, target_method);
+
+-- ============================================================================
 -- MOD TABLES: Harmony Patches
 -- ============================================================================
 

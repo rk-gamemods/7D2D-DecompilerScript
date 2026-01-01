@@ -183,6 +183,32 @@ public class SqliteWriter : IDisposable
     }
     
     // =========================================================================
+    // External call writing (calls to Unity, BCL, etc.)
+    // =========================================================================
+    
+    public void InsertExternalCall(long callerId, string? targetAssembly, string targetType, 
+                                   string targetMethod, string? targetSignature,
+                                   string? filePath, int? lineNumber)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO external_calls (caller_id, target_assembly, target_type, target_method, 
+                                       target_signature, file_path, line_number)
+            VALUES (@caller_id, @target_assembly, @target_type, @target_method, 
+                    @target_signature, @file_path, @line_number)
+        ";
+        
+        cmd.Parameters.AddWithValue("@caller_id", callerId);
+        cmd.Parameters.AddWithValue("@target_assembly", targetAssembly ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@target_type", targetType);
+        cmd.Parameters.AddWithValue("@target_method", targetMethod);
+        cmd.Parameters.AddWithValue("@target_signature", targetSignature ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+    
+    // =========================================================================
     // Interface implementation writing
     // =========================================================================
     

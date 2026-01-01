@@ -15,6 +15,7 @@ public class CallExtractor
     private readonly bool _verbose;
     
     private int _callCount = 0;
+    private int _externalCallCount = 0;
     private int _unresolvedCount = 0;
     
     public CallExtractor(
@@ -51,7 +52,7 @@ public class CallExtractor
         
         transaction.Commit();
         
-        Console.WriteLine($"Extracted {_callCount} call edges ({_unresolvedCount} unresolved targets)");
+        Console.WriteLine($"Extracted {_callCount} internal calls, {_externalCallCount} external calls ({_unresolvedCount} unresolved)");
     }
     
     private void ProcessMethods(SqliteWriter db, SyntaxNode root, SemanticModel model, string filePath)
@@ -180,18 +181,22 @@ public class CallExtractor
         }
         
         var calleeId = GetMethodId(methodSymbol);
-        if (calleeId == null)
-        {
-            // Method exists but not in our database (e.g., BCL method)
-            return;
-        }
-        
         var lineSpan = invocation.GetLocation().GetLineSpan();
-        var callType = methodSymbol.IsVirtual || methodSymbol.IsOverride || methodSymbol.IsAbstract 
-            ? "virtual" : "direct";
+        var lineNumber = lineSpan.StartLinePosition.Line + 1;
         
-        db.InsertCall(callerId, calleeId.Value, filePath, lineSpan.StartLinePosition.Line + 1, callType);
-        _callCount++;
+        if (calleeId != null)
+        {
+            // Internal call - to game code
+            var callType = methodSymbol.IsVirtual || methodSymbol.IsOverride || methodSymbol.IsAbstract 
+                ? "virtual" : "direct";
+            db.InsertCall(callerId, calleeId.Value, filePath, lineNumber, callType);
+            _callCount++;
+        }
+        else
+        {
+            // External call - to Unity, BCL, etc.
+            RecordExternalCall(db, callerId, methodSymbol, filePath, lineNumber);
+        }
     }
     
     private void ExtractObjectCreation(SqliteWriter db, ObjectCreationExpressionSyntax creation, 
@@ -212,11 +217,18 @@ public class CallExtractor
         }
         
         var calleeId = GetMethodId(ctorSymbol);
-        if (calleeId == null) return;
-        
         var lineSpan = creation.GetLocation().GetLineSpan();
-        db.InsertCall(callerId, calleeId.Value, filePath, lineSpan.StartLinePosition.Line + 1, "direct");
-        _callCount++;
+        var lineNumber = lineSpan.StartLinePosition.Line + 1;
+        
+        if (calleeId != null)
+        {
+            db.InsertCall(callerId, calleeId.Value, filePath, lineNumber, "direct");
+            _callCount++;
+        }
+        else
+        {
+            RecordExternalCall(db, callerId, ctorSymbol, filePath, lineNumber);
+        }
     }
     
     private void ExtractMemberAccess(SqliteWriter db, MemberAccessExpressionSyntax memberAccess, 
@@ -239,15 +251,46 @@ public class CallExtractor
             if (accessorSymbol == null) return;
             
             var calleeId = GetMethodId(accessorSymbol);
-            if (calleeId == null) return;
-            
             var lineSpan = memberAccess.GetLocation().GetLineSpan();
-            var callType = accessorSymbol.IsVirtual || accessorSymbol.IsOverride 
-                ? "virtual" : "direct";
+            var lineNumber = lineSpan.StartLinePosition.Line + 1;
             
-            db.InsertCall(callerId, calleeId.Value, filePath, lineSpan.StartLinePosition.Line + 1, callType);
-            _callCount++;
+            if (calleeId != null)
+            {
+                var callType = accessorSymbol.IsVirtual || accessorSymbol.IsOverride 
+                    ? "virtual" : "direct";
+                db.InsertCall(callerId, calleeId.Value, filePath, lineNumber, callType);
+                _callCount++;
+            }
+            else
+            {
+                RecordExternalCall(db, callerId, accessorSymbol, filePath, lineNumber);
+            }
         }
+    }
+    
+    /// <summary>
+    /// Record a call to an external method (Unity, BCL, third-party).
+    /// </summary>
+    private void RecordExternalCall(SqliteWriter db, long callerId, IMethodSymbol methodSymbol,
+                                    string filePath, int lineNumber)
+    {
+        var containingType = methodSymbol.ContainingType;
+        if (containingType == null) return;
+        
+        // Get assembly name
+        string? assemblyName = null;
+        if (containingType.ContainingAssembly != null)
+        {
+            assemblyName = containingType.ContainingAssembly.Name;
+        }
+        
+        var targetType = containingType.ToDisplayString();
+        var targetMethod = methodSymbol.Name;
+        var targetSignature = BuildSignature(methodSymbol);
+        
+        db.InsertExternalCall(callerId, assemblyName, targetType, targetMethod, 
+                             targetSignature, filePath, lineNumber);
+        _externalCallCount++;
     }
     
     /// <summary>
@@ -291,5 +334,6 @@ public class CallExtractor
     }
     
     public int CallCount => _callCount;
+    public int ExternalCallCount => _externalCallCount;
     public int UnresolvedCount => _unresolvedCount;
 }
