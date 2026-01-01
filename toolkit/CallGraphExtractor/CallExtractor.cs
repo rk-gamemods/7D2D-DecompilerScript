@@ -33,7 +33,7 @@ public class CallExtractor
     /// <summary>
     /// Extract all method call edges and write to database.
     /// </summary>
-    public void ExtractCalls(SqliteWriter db, string sourcePath)
+    public void ExtractCalls(SqliteWriter db, IList<string> sourcePaths)
     {
         Console.WriteLine("Extracting call relationships...");
         
@@ -42,7 +42,18 @@ public class CallExtractor
         foreach (var tree in _compilation.SyntaxTrees)
         {
             var filePath = tree.FilePath;
-            var relativePath = Path.GetRelativePath(sourcePath, filePath);
+            
+            // Find the best matching source path for relative path calculation
+            var relativePath = filePath;
+            foreach (var srcPath in sourcePaths)
+            {
+                if (filePath.StartsWith(srcPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativePath = Path.GetRelativePath(srcPath, filePath);
+                    break;
+                }
+            }
+            
             var semanticModel = _compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
             
@@ -53,6 +64,14 @@ public class CallExtractor
         transaction.Commit();
         
         Console.WriteLine($"Extracted {_callCount} internal calls, {_externalCallCount} external calls ({_unresolvedCount} unresolved)");
+    }
+    
+    /// <summary>
+    /// Extract all method call edges and write to database (single source path).
+    /// </summary>
+    public void ExtractCalls(SqliteWriter db, string sourcePath)
+    {
+        ExtractCalls(db, new[] { sourcePath });
     }
     
     private void ProcessMethods(SqliteWriter db, SyntaxNode root, SemanticModel model, string filePath)

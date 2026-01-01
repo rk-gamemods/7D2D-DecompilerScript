@@ -86,15 +86,19 @@ public class SqliteWriter : IDisposable
     // =========================================================================
     
     public long InsertType(string name, string? @namespace, string fullName, string kind,
-                           string? baseType, string? filePath, int? lineNumber,
+                           string? baseType, string? assembly, string? filePath, int? lineNumber,
                            bool isAbstract = false, bool isSealed = false, bool isStatic = false)
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO types (name, namespace, full_name, kind, base_type, file_path, line_number,
+            INSERT INTO types (name, namespace, full_name, kind, base_type, assembly, file_path, line_number,
                               is_abstract, is_sealed, is_static)
-            VALUES (@name, @namespace, @full_name, @kind, @base_type, @file_path, @line_number,
+            VALUES (@name, @namespace, @full_name, @kind, @base_type, @assembly, @file_path, @line_number,
                     @is_abstract, @is_sealed, @is_static)
+            ON CONFLICT(full_name) DO UPDATE SET
+                assembly = COALESCE(assembly, @assembly),
+                file_path = COALESCE(file_path, @file_path),
+                line_number = COALESCE(line_number, @line_number)
             RETURNING id
         ";
         
@@ -103,6 +107,7 @@ public class SqliteWriter : IDisposable
         cmd.Parameters.AddWithValue("@full_name", fullName);
         cmd.Parameters.AddWithValue("@kind", kind);
         cmd.Parameters.AddWithValue("@base_type", baseType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@assembly", assembly ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@is_abstract", isAbstract ? 1 : 0);
@@ -117,16 +122,16 @@ public class SqliteWriter : IDisposable
     // =========================================================================
     
     public long InsertMethod(long typeId, string name, string signature, string? returnType,
-                             string? filePath, int? lineNumber, int? endLine,
+                             string? assembly, string? filePath, int? lineNumber, int? endLine,
                              bool isStatic = false, bool isVirtual = false, 
                              bool isOverride = false, bool isAbstract = false,
                              string? access = null)
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO methods (type_id, name, signature, return_type, file_path, line_number,
+            INSERT INTO methods (type_id, name, signature, return_type, assembly, file_path, line_number,
                                 end_line, is_static, is_virtual, is_override, is_abstract, access)
-            VALUES (@type_id, @name, @signature, @return_type, @file_path, @line_number,
+            VALUES (@type_id, @name, @signature, @return_type, @assembly, @file_path, @line_number,
                     @end_line, @is_static, @is_virtual, @is_override, @is_abstract, @access)
             RETURNING id
         ";
@@ -135,6 +140,7 @@ public class SqliteWriter : IDisposable
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@signature", signature);
         cmd.Parameters.AddWithValue("@return_type", returnType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@assembly", assembly ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@file_path", filePath ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@line_number", lineNumber ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@end_line", endLine ?? (object)DBNull.Value);

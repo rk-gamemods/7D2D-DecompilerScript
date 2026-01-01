@@ -47,6 +47,19 @@ A SQLite-based toolkit combining call graph analysis + keyword search to dramati
 
 ## Architecture Decisions
 
+### 0. Philosophy — Use Everything, Optimize Nothing
+
+**This extraction runs once per game update (1-2x/month at most).** Runtime is completely irrelevant—if it takes 30 seconds or 10 minutes, we don't care. We do the work once, then query the resulting database until the next game update.
+
+**Therefore: Load everything. Be comprehensive. No selectivity.**
+
+- **All source directories** — Parse `Assembly-CSharp`, `Assembly-CSharp-firstpass`, and any other decompiled assemblies we find
+- **All DLLs from game directory** — Recursively scan the entire game installation for every `.dll` file. Unity modules, third-party libraries, mod loaders, everything. Load them all as metadata references.
+- **No filtering** — Don't try to be smart about which DLLs "matter." Native DLLs will fail to load (they're C++), so catch those exceptions and skip silently. But try everything.
+- **Log transparently** — Report what loaded, what failed, and why. But don't let failures stop the process.
+
+The goal is **maximum call resolution**. Every unresolved call is a potential blind spot when debugging mod issues. The game ships with ~60-80 DLLs in the Managed folder alone—load all of them.
+
 ### 1. Parser Choice — Roslyn for Accuracy
 
 **Decision: Use Roslyn.** Speed isn't a concern—this runs once per game update (1-2x/month), so a few minutes is fine. Robustness matters more.

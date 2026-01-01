@@ -51,3 +51,6 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
+
+*.db
+*.db-*

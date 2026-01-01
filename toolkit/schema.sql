@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS types (
     full_name TEXT NOT NULL UNIQUE,     -- "EntityPlayer" or "SomeNamespace.SomeClass"
     kind TEXT NOT NULL,                 -- 'class', 'struct', 'interface', 'enum'
     base_type TEXT,                     -- Parent class full name (null if none)
+    assembly TEXT,                      -- Source assembly: "Assembly-CSharp", "Assembly-CSharp-firstpass"
     file_path TEXT,                     -- Source file path
     line_number INTEGER,                -- Line where type is declared
     is_abstract INTEGER DEFAULT 0,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS types (
 
 CREATE INDEX IF NOT EXISTS idx_types_name ON types(name);
 CREATE INDEX IF NOT EXISTS idx_types_base ON types(base_type);
+CREATE INDEX IF NOT EXISTS idx_types_assembly ON types(assembly);
 
 -- Methods (including constructors, properties, etc.)
 CREATE TABLE IF NOT EXISTS methods (
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS methods (
     name TEXT NOT NULL,                 -- Method name: "GetItemCount"
     signature TEXT NOT NULL,            -- Full signature: "GetItemCount(string, int)"
     return_type TEXT,                   -- Return type: "int", "void", etc.
+    assembly TEXT,                      -- Source assembly: "Assembly-CSharp", "Assembly-CSharp-firstpass"
     file_path TEXT,                     -- Source file path
     line_number INTEGER,                -- Line where method starts
     end_line INTEGER,                   -- Line where method ends
@@ -44,6 +47,7 @@ CREATE TABLE IF NOT EXISTS methods (
 CREATE INDEX IF NOT EXISTS idx_methods_type ON methods(type_id);
 CREATE INDEX IF NOT EXISTS idx_methods_name ON methods(name);
 CREATE INDEX IF NOT EXISTS idx_methods_sig ON methods(signature);
+CREATE INDEX IF NOT EXISTS idx_methods_assembly ON methods(assembly);
 
 -- Method calls (edges in call graph)
 CREATE TABLE IF NOT EXISTS calls (
