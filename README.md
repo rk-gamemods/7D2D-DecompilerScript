@@ -252,6 +252,66 @@ git --version
 
 MIT License - Use freely for your modding projects.
 
+---
+
+## 7D2D Mod Maintenance Toolkit
+
+**NEW:** This repository now includes a powerful call graph analysis toolkit that dramatically reduces the time needed to understand game code.
+
+### What It Does
+
+Instead of reading thousands of lines of source code, query a database:
+- **Find callers**: "Who calls `DecItem`?" → Get exact locations in seconds
+- **Trace execution**: "What does `PlayerMoveController.Update` call?" → See all 50+ callees
+- **Search code**: Full-text search with snippet highlighting
+- **Check compatibility**: Detect conflicts between multiple mods
+- **Analyze performance**: Find expensive operations in Update loops
+
+### Quick Start
+
+```powershell
+# After running Decompile-7D2D.ps1, build the database
+cd toolkit/CallGraphExtractor
+dotnet run -c Release -- `
+  --source "../../7D2DCodebase" `
+  --output "../callgraph.db" `
+  --game-root "C:\Steam\steamapps\common\7 Days To Die" `
+  --verbose
+
+# Query the database
+cd ../QueryDb
+dotnet run -- "../callgraph.db"                              # Summary stats
+dotnet run -- "../callgraph.db" callers "Bag.DecItem"        # Who calls this?
+dotnet run -- "../callgraph.db" search "GetComponent"        # Find in code
+dotnet run -- "../callgraph.db" perf                         # Performance analysis
+dotnet run -- "../callgraph.db" compat                       # Mod compatibility
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `callers <method>` | Find all methods that call this method |
+| `callees <method>` | Find all methods called by this method |
+| `search <keyword>` | Full-text search in method bodies |
+| `chain <from> <to>` | Find call path between methods |
+| `impl <method>` | Find all implementations/overrides |
+| `compat` | Check mod compatibility (conflicts) |
+| `perf [category]` | Performance analysis |
+| `xml <name>` | Query XML definitions |
+| `sql "SELECT ..."` | Custom SQL queries |
+
+### For AI Assistants
+
+See [AI_CONTEXT.md](AI_CONTEXT.md) for guidance on using the toolkit efficiently. The database enables answering code questions with 500-token queries instead of 50K-token source dumps.
+
+### Documentation
+
+- [TOOLKIT_DESIGN.md](TOOLKIT_DESIGN.md) - Full design document with SQL examples
+- [AI_CONTEXT.md](AI_CONTEXT.md) - Guide for AI assistants
+
+---
+
 ## Related Projects
 
 - [ProxiCraft](https://github.com/rk-gamemods/7D2D-ProxiCraft) - Craft from nearby containers mod
