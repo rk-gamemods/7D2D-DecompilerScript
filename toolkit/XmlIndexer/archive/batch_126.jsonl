@@ -1,0 +1,1 @@
+{"entity_type": "consumable", "entity_name": "Bandage", "layman_description": "Medical supplies that stop bleeding and heal minor wounds.", "technical_description": "Consumable item restoring 15 health points with 5-second application delay and bleeding status immunity.", "player_impact": "Critical for surviving melee encounters with infected enemies."}

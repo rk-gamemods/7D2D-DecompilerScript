@@ -1,1 +1,0 @@
-{"entity_type": "ammunition", "entity_name": "Shotgun Shell", "layman_description": "Ammunition cartridge loaded with buckshot for shotgun weapons.", "technical_description": "Ammunition type with stackable inventory to 1,000 shells, 0.02kg per shell.", "player_impact": "Mandatory for shotgun-based combat strategies."}
