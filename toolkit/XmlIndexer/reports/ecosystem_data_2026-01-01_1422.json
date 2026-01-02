@@ -1,0 +1,61 @@
+{
+  "generated": "2026-01-01T14:22:44.9172179-05:00",
+  "baseGame": {
+    "totalDefinitions": 15534,
+    "totalProperties": 65267,
+    "totalReferences": 47332,
+    "definitionsByType": {
+      "block": 6289,
+      "sound": 2453,
+      "entity_group": 1877,
+      "item": 1375,
+      "loot_group": 1002,
+      "game_event": 889,
+      "recipe": 588,
+      "buff": 461,
+      "entity_class": 292,
+      "quest": 229,
+      "perk": 57,
+      "skill": 16,
+      "vehicle": 6
+    }
+  },
+  "mods": {
+    "total": 14,
+    "xmlOnly": 10,
+    "csharpOnly": 3,
+    "hybrid": 1,
+    "operationsByType": {
+      "append": 35,
+      "set": 11,
+      "csv": 5,
+      "remove": 3,
+      "removeattribute": 1
+    },
+    "list": [
+      { "name": "zzzzzzByteblazarsNoHeatGeneration", "xmlOps": 3, "csharpDeps": 0, "removes": 2, "status": "REMOVES" },
+      { "name": "WoodleSpeaker", "xmlOps": 2, "csharpDeps": 0, "removes": 1, "status": "REMOVES" },
+      { "name": "AGF-V2-Backpack72Plus-v3.2.0", "xmlOps": 29, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "zByteblazarsScreamers", "xmlOps": 10, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "zzzzzzzByteblazarsOlfactoryScreamers", "xmlOps": 4, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "BellGoBong", "xmlOps": 3, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "WoodleCoffs", "xmlOps": 2, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "WoodleSigns", "xmlOps": 2, "csharpDeps": 0, "removes": 0, "status": "OK" },
+      { "name": "0_TFP_Harmony", "xmlOps": 0, "csharpDeps": 0, "removes": 0, "status": "PASSIVE" },
+      { "name": "AGF-V2-HUDPlus-1Main-v5.2.0", "xmlOps": 0, "csharpDeps": 0, "removes": 0, "status": "PASSIVE" },
+      { "name": "AudibleBreakingGlassJars", "xmlOps": 0, "csharpDeps": 6, "removes": 0, "status": "C#" },
+      { "name": "ProxiCraft", "xmlOps": 0, "csharpDeps": 0, "removes": 0, "status": "PASSIVE" },
+      { "name": "ToiletBatons", "xmlOps": 0, "csharpDeps": 0, "removes": 0, "status": "PASSIVE" },
+      { "name": "UnlockOpenDoors", "xmlOps": 0, "csharpDeps": 0, "removes": 0, "status": "PASSIVE" }
+    ]
+  },
+  "ecosystem": {
+    "activeEntities": 15533,
+    "modifiedEntities": 8,
+    "removedEntities": 1,
+    "dependedEntities": 1,
+    "criticalConflicts": [
+
+    ]
+  }
+}

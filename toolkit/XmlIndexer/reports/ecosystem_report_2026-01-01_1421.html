@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>7D2D Mod Ecosystem Report</title>
+    <style>
+        :root { --bg: #1a1a2e; --card: #16213e; --accent: #0f3460; --text: #e8e8e8; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: var(--cyan); margin-bottom: 0.5rem; font-size: 2.5rem; }
+        h2 { color: var(--cyan); margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }
+        h3 { color: var(--text); margin: 1rem 0 0.5rem; }
+        .subtitle { color: #888; margin-bottom: 2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .card { background: var(--card); border-radius: 8px; padding: 1.5rem; border: 1px solid var(--accent); }
+        .stat-value { font-size: 2rem; font-weight: bold; color: var(--cyan); }
+        .stat-label { color: #888; font-size: 0.9rem; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--accent); }
+        th { background: var(--accent); color: var(--cyan); }
+        tr:hover { background: rgba(15, 52, 96, 0.3); }
+        .bar { height: 20px; background: var(--cyan); border-radius: 4px; }
+        .status-ok { color: var(--green); }
+        .status-removes { color: var(--yellow); }
+        .status-conflict { color: var(--red); }
+        .status-csharp { color: var(--cyan); }
+        .status-passive { color: #666; }
+        .danger { background: rgba(248, 113, 113, 0.1); border: 1px solid var(--red); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+        .danger h3 { color: var(--red); }
+        .success { background: rgba(74, 222, 128, 0.1); border: 1px solid var(--green); border-radius: 8px; padding: 1rem; }
+        .fun-fact { background: var(--accent); padding: 0.5rem 1rem; border-radius: 4px; margin: 0.5rem 0; }
+        footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--accent); color: #666; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 7D2D Mod Ecosystem Report</h1>
+        <p class="subtitle">Generated: 2026-01-01 14:21:56</p>
+
+        <h2>📊 Base Game Statistics</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="stat-value">15,534</div>
+                <div class="stat-label">Total Definitions</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">65,267</div>
+                <div class="stat-label">Total Properties</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">47,332</div>
+                <div class="stat-label">Cross-References</div>
+            </div>
+        </div>
+
+        <h3>Definitions by Type</h3>
+        <table>
+            <tr><th>Type</th><th>Count</th><th>Distribution</th></tr>
+            
+            <tr>
+                <td>block</td>
+                <td>6,289</td>
+                <td><div class="bar" style="width: 40%"></div></td>
+            </tr>
+
+            <tr>
+                <td>sound</td>
+                <td>2,453</td>
+                <td><div class="bar" style="width: 15%"></div></td>
+            </tr>
+
+            <tr>
+                <td>entity_group</td>
+                <td>1,877</td>
+                <td><div class="bar" style="width: 12%"></div></td>
+            </tr>
+
+            <tr>
+                <td>item</td>
+                <td>1,375</td>
+                <td><div class="bar" style="width: 8%"></div></td>
+            </tr>
+
+            <tr>
+                <td>loot_group</td>
+                <td>1,002</td>
+                <td><div class="bar" style="width: 6%"></div></td>
+            </tr>
+
+            <tr>
+                <td>game_event</td>
+                <td>889</td>
+                <td><div class="bar" style="width: 5%"></div></td>
+            </tr>
+
+            <tr>
+                <td>recipe</td>
+                <td>588</td>
+                <td><div class="bar" style="width: 3%"></div></td>
+            </tr>
+
+            <tr>
+                <td>buff</td>
+                <td>461</td>
+                <td><div class="bar" style="width: 2%"></div></td>
+            </tr>
+
+            <tr>
+                <td>entity_class</td>
+                <td>292</td>
+                <td><div class="bar" style="width: 1%"></div></td>
+            </tr>
+
+            <tr>
+                <td>quest</td>
+                <td>229</td>
+                <td><div class="bar" style="width: 1%"></div></td>
+            </tr>
+
+            <tr>
+                <td>perk</td>
+                <td>57</td>
+                <td><div class="bar" style="width: 0%"></div></td>
+            </tr>
+
+            <tr>
+                <td>skill</td>
+                <td>16</td>
+                <td><div class="bar" style="width: 0%"></div></td>
+            </tr>
+
+            <tr>
+                <td>vehicle</td>
+                <td>6</td>
+                <td><div class="bar" style="width: 0%"></div></td>
+            </tr>
+        </table>
+
+        <h2>🔧 Mod Statistics</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="stat-value">14</div>
+                <div class="stat-label">Total Mods</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">10</div>
+                <div class="stat-label">XML-Only Mods</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">C#-Only Mods</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">1</div>
+                <div class="stat-label">Hybrid Mods</div>
+            </div>
+        </div>
+
+        <h3>XML Operations by Type</h3>
+        <table>
+            <tr><th>Operation</th><th>Count</th></tr>
+            <tr><td>append</td><td>35</td></tr>
+<tr><td>set</td><td>11</td></tr>
+<tr><td>csv</td><td>5</td></tr>
+<tr><td>remove</td><td>3</td></tr>
+<tr><td>removeattribute</td><td>1</td></tr>
+        </table>
+
+        <h2>🌍 Ecosystem Health</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="stat-value">15,533</div>
+                <div class="stat-label">Active Entities</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">8</div>
+                <div class="stat-label">Modified by Mods</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">1</div>
+                <div class="stat-label">Removed by Mods</div>
+            </div>
+            <div class="card">
+                <div class="stat-value">1</div>
+                <div class="stat-label">C# Dependencies</div>
+            </div>
+        </div>
+
+        
+        <div class="success">
+            <h3>✓ No Critical Conflicts Detected</h3>
+            <p>All C# mod dependencies are satisfied.</p>
+        </div>
+
+        <h2>📦 Mod Impact Summary</h2>
+        <table>
+            <tr><th>Mod Name</th><th>XML Ops</th><th>C# Deps</th><th>Removes</th><th>Status</th></tr>
+            
+            <tr>
+                <td>zzzzzzByteblazarsNoHeatGeneration</td>
+                <td>3</td>
+                <td>0</td>
+                <td>2</td>
+                <td class="status-removes">REMOVES</td>
+            </tr>
+
+            <tr>
+                <td>WoodleSpeaker</td>
+                <td>2</td>
+                <td>0</td>
+                <td>1</td>
+                <td class="status-removes">REMOVES</td>
+            </tr>
+
+            <tr>
+                <td>AGF-V2-Backpack72Plus-v3.2.0</td>
+                <td>29</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>zByteblazarsScreamers</td>
+                <td>10</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>zzzzzzzByteblazarsOlfactoryScreamers</td>
+                <td>4</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>BellGoBong</td>
+                <td>3</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>WoodleCoffs</td>
+                <td>2</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>WoodleSigns</td>
+                <td>2</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-ok">OK</td>
+            </tr>
+
+            <tr>
+                <td>0_TFP_Harmony</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-passive">PASSIVE</td>
+            </tr>
+
+            <tr>
+                <td>AGF-V2-HUDPlus-1Main-v5.2.0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-passive">PASSIVE</td>
+            </tr>
+
+            <tr>
+                <td>AudibleBreakingGlassJars</td>
+                <td>0</td>
+                <td>6</td>
+                <td>0</td>
+                <td class="status-c#">C#</td>
+            </tr>
+
+            <tr>
+                <td>ProxiCraft</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-passive">PASSIVE</td>
+            </tr>
+
+            <tr>
+                <td>ToiletBatons</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-passive">PASSIVE</td>
+            </tr>
+
+            <tr>
+                <td>UnlockOpenDoors</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td class="status-passive">PASSIVE</td>
+            </tr>
+        </table>
+
+        <h2>🎮 Fun Facts</h2>
+        <div class="fun-fact">📏 <strong>Longest Item Name:</strong> questRewardLegendarySteelSledgehammerCraftingBundle</div>
+        <div class="fun-fact">🔗 <strong>Most Referenced Item:</strong> noteTestersDelightAdmin (776 refs)</div>
+        <div class="fun-fact">🏗️ <strong>Most Complex Entity:</strong> vehicleGyrocopter (115 properties)</div>
+
+        
+        <h2>⚡ Contested Entities</h2>
+        <p>These entities are modified by multiple mods - high conflict potential:</p>
+        <table>
+            <tr><th>Entity</th><th>Modified by # Mods</th></tr>
+            <tr><td>god</td><td>2</td></tr>
+        </table>
+
+        <footer>
+            Generated by 7D2D Mod Ecosystem Analyzer
+        </footer>
+    </div>
+</body>
+</html>
