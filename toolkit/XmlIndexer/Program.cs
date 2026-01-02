@@ -375,7 +375,13 @@ public class Program
                     xml_operations INTEGER DEFAULT 0,
                     csharp_dependencies INTEGER DEFAULT 0,
                     conflicts INTEGER DEFAULT 0,
-                    cautions INTEGER DEFAULT 0
+                    cautions INTEGER DEFAULT 0,
+                    -- ModInfo.xml fields
+                    display_name TEXT,
+                    description TEXT,
+                    author TEXT,
+                    version TEXT,
+                    website TEXT
                 );
                 CREATE INDEX idx_mod_name ON mods(name);
 
@@ -1967,13 +1973,37 @@ public class Program
                          .Any(d => !Path.GetFileName(d).StartsWith("0Harmony") && 
                                    !Path.GetFileName(d).Contains("Mono.Cecil"));
 
+            // Parse ModInfo.xml if present
+            string? displayName = null, description = null, author = null, version = null, website = null;
+            var modInfoPath = Path.Combine(modDir, "ModInfo.xml");
+            if (File.Exists(modInfoPath))
+            {
+                try
+                {
+                    var modInfoDoc = XDocument.Load(modInfoPath);
+                    displayName = modInfoDoc.Root?.Element("DisplayName")?.Attribute("value")?.Value 
+                                  ?? modInfoDoc.Root?.Element("Name")?.Attribute("value")?.Value;
+                    description = modInfoDoc.Root?.Element("Description")?.Attribute("value")?.Value;
+                    author = modInfoDoc.Root?.Element("Author")?.Attribute("value")?.Value;
+                    version = modInfoDoc.Root?.Element("Version")?.Attribute("value")?.Value;
+                    website = modInfoDoc.Root?.Element("Website")?.Attribute("value")?.Value;
+                }
+                catch { /* Ignore ModInfo.xml parse errors */ }
+            }
+
             // Insert mod record
             using (var cmd = db.CreateCommand())
             {
-                cmd.CommandText = "INSERT INTO mods (name, has_xml, has_dll) VALUES ($name, $hasXml, $hasDll)";
+                cmd.CommandText = @"INSERT INTO mods (name, has_xml, has_dll, display_name, description, author, version, website) 
+                    VALUES ($name, $hasXml, $hasDll, $displayName, $description, $author, $version, $website)";
                 cmd.Parameters.AddWithValue("$name", modName);
                 cmd.Parameters.AddWithValue("$hasXml", hasXml ? 1 : 0);
                 cmd.Parameters.AddWithValue("$hasDll", hasDll ? 1 : 0);
+                cmd.Parameters.AddWithValue("$displayName", displayName ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$author", author ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$version", version ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$website", website ?? (object)DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
 
@@ -2604,7 +2634,17 @@ public class Program
         string OneLiner,           // Single sentence summary
         List<string> KeyFeatures,  // What the mod does
         List<string> SystemsAffected, // Which game systems are modified
-        List<string> Warnings      // Potential issues
+        List<string> Warnings,     // Potential issues
+        ModXmlInfo? XmlInfo        // ModInfo.xml data if available
+    );
+
+    // Data from ModInfo.xml
+    private record ModXmlInfo(
+        string? DisplayName,
+        string? Description,
+        string? Author,
+        string? Version,
+        string? Website
     );
 
     private static ReportData GatherReportData(SqliteConnection db)
@@ -2955,19 +2995,32 @@ public class Program
     {
         var behaviors = new List<ModBehavior>();
         
-        // Get all mods with their analysis data
+        // Get all mods with their analysis data including ModInfo.xml fields
         using var cmd = db.CreateCommand();
-        cmd.CommandText = @"SELECT m.id, m.name, m.has_xml, m.has_dll FROM mods m ORDER BY m.name";
+        cmd.CommandText = @"SELECT m.id, m.name, m.has_xml, m.has_dll, 
+            m.display_name, m.description, m.author, m.version, m.website 
+            FROM mods m ORDER BY m.name";
         
         using var reader = cmd.ExecuteReader();
-        var mods = new List<(int id, string name, bool hasXml, bool hasDll)>();
+        var mods = new List<(int id, string name, bool hasXml, bool hasDll, ModXmlInfo? xmlInfo)>();
         while (reader.Read())
         {
-            mods.Add((reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2) == 1, reader.GetInt32(3) == 1));
+            ModXmlInfo? xmlInfo = null;
+            if (!reader.IsDBNull(4) || !reader.IsDBNull(5) || !reader.IsDBNull(6) || !reader.IsDBNull(7) || !reader.IsDBNull(8))
+            {
+                xmlInfo = new ModXmlInfo(
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    reader.IsDBNull(6) ? null : reader.GetString(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8)
+                );
+            }
+            mods.Add((reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2) == 1, reader.GetInt32(3) == 1, xmlInfo));
         }
         reader.Close();
 
-        foreach (var (modId, modName, hasXml, hasDll) in mods)
+        foreach (var (modId, modName, hasXml, hasDll, xmlInfo) in mods)
         {
             var features = new List<string>();
             var systems = new HashSet<string>();
@@ -3071,7 +3124,7 @@ public class Program
             // Generate one-liner summary based on ACTUAL features
             var oneLiner = GenerateOneLiner(uniqueFeatures, systems.ToList(), hasXml, hasDll, modName);
 
-            behaviors.Add(new ModBehavior(modName, oneLiner, uniqueFeatures, systems.ToList(), warnings));
+            behaviors.Add(new ModBehavior(modName, oneLiner, uniqueFeatures, systems.ToList(), warnings, xmlInfo));
         }
 
         return behaviors;
@@ -4120,6 +4173,33 @@ public class Program
                     sb.AppendLine($@"                        <div style=""color: var(--yellow);"">{warning}</div>");
                 }
                 sb.AppendLine(@"                    </div>");
+            }
+
+            // ModInfo.xml collapsible section
+            if (b.XmlInfo != null)
+            {
+                var info = b.XmlInfo;
+                sb.AppendLine(@"                    <details style=""margin-top: 0.75rem;"">
+                        <summary style=""cursor: pointer; color: #888; font-size: 0.9rem;"">📄 Mod Information (from ModInfo.xml)</summary>
+                        <div style=""margin-top: 0.5rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.2); border-radius: 4px; font-size: 0.9rem;"">");
+                
+                if (!string.IsNullOrEmpty(info.DisplayName))
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Name:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.DisplayName)}</span></div>");
+                
+                if (!string.IsNullOrEmpty(info.Description))
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Description:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.Description)}</span></div>");
+                
+                if (!string.IsNullOrEmpty(info.Author))
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Author:</strong> <span style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Author)}</span></div>");
+                
+                if (!string.IsNullOrEmpty(info.Version))
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Version:</strong> <span style=""color: var(--green);"">{System.Web.HttpUtility.HtmlEncode(info.Version)}</span></div>");
+                
+                if (!string.IsNullOrEmpty(info.Website))
+                    sb.AppendLine($@"                            <div><strong style=""color: #888;"">Website:</strong> <a href=""{System.Web.HttpUtility.HtmlEncode(info.Website)}"" target=""_blank"" style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Website)}</a></div>");
+                
+                sb.AppendLine(@"                        </div>
+                    </details>");
             }
             
             sb.AppendLine(@"                </div>");
