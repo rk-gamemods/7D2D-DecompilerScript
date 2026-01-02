@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="carbon">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>7D2D Mod Ecosystem Report</title>
+    <style>
+        :root { --s1: 2px; --s2: 4px; --s3: 6px; --s4: 10px; --s5: 14px; --fs-xs: 10px; --fs-sm: 11px; --fs-base: 12px; --fs-md: 13px; }
+        [data-theme="carbon"] { --bg: #161b22; --bg2: #1c2128; --card: #21262d; --border: #30363d; --text: #c9d1d9; --muted: #8b949e; --dim: #6e7681; --green: #3fb950; --yellow: #d29922; --red: #f85149; --cyan: #58a6ff; --purple: #bc8cff; }
+        [data-theme="graphite"] { --bg: #1a1a1a; --bg2: #1f1f1f; --card: #262626; --border: #404040; --text: #d4d4d4; --muted: #888; --dim: #666; --green: #98c379; --yellow: #e5c07b; --red: #e06c75; --cyan: #56b6c2; --purple: #c678dd; }
+        [data-theme="obsidian"] { --bg: #121214; --bg2: #18181b; --card: #1f1f23; --border: #3f3f46; --text: #e4e4e7; --muted: #a1a1aa; --dim: #71717a; --green: #34d399; --yellow: #f59e0b; --red: #f87171; --cyan: #a3a3a3; --purple: #a78bfa; }
+        [data-theme="blue"] { --bg: #1a1a2e; --bg2: #16213e; --card: #1a2744; --border: #2a4a6e; --text: #e8e8e8; --muted: #aaa; --dim: #888; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; --purple: #a78bfa; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', -apple-system, sans-serif; font-size: var(--fs-base); background: var(--bg); color: var(--text); line-height: 1.4; }
+        a { color: var(--cyan); }
+        
+        /* Two-column layout */
+        .wrap { display: grid; grid-template-columns: 160px 1fr; min-height: 100vh; }
+        nav { background: var(--bg2); border-right: 1px solid var(--border); padding: var(--s4); position: sticky; top: 0; height: 100vh; font-size: var(--fs-sm); }
+        nav a { display: block; padding: var(--s2) var(--s3); color: var(--muted); text-decoration: none; border-radius: 2px; }
+        nav a:hover { background: var(--card); color: var(--text); }
+        nav .t { font-size: var(--fs-xs); text-transform: uppercase; color: var(--dim); margin: var(--s4) 0 var(--s2); }
+        nav select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 2px; padding: var(--s2); font-size: var(--fs-xs); margin-top: var(--s5); }
+        main { padding: var(--s4); }
+        
+        /* Header */
+        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: var(--s3); margin-bottom: var(--s4); }
+        .hdr h1 { font-size: var(--fs-md); font-weight: 600; }
+        .hdr span { font-size: var(--fs-xs); color: var(--dim); }
+        
+        /* Stat row */
+        .stats { display: flex; gap: var(--s5); flex-wrap: wrap; font-size: var(--fs-sm); margin-bottom: var(--s4); padding-bottom: var(--s3); border-bottom: 1px solid var(--border); }
+        .stats b { color: var(--cyan); margin-right: 2px; }
+        .stats span { color: var(--dim); }
+        
+        /* Unified details/collapsible */
+        details { margin-bottom: var(--s2); }
+        summary { cursor: pointer; padding: var(--s2) var(--s3); background: var(--card); border: 1px solid var(--border); border-radius: 2px; font-size: var(--fs-sm); list-style: none; display: flex; align-items: center; gap: var(--s3); }
+        summary::-webkit-details-marker { display: none; }
+        summary::before { content: '▸'; color: var(--dim); font-size: 10px; }
+        details[open] > summary::before { content: '▾'; }
+        details[open] > summary { border-radius: 2px 2px 0 0; background: var(--border); }
+        summary:hover { background: var(--border); }
+        .body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 2px 2px; padding: var(--s3); background: var(--bg2); font-size: var(--fs-sm); }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+        th, td { padding: var(--s2) var(--s3); text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-size: var(--fs-xs); text-transform: uppercase; color: var(--dim); font-weight: 500; background: var(--bg); }
+        tr:hover { background: var(--card); }
+        
+        /* Badges */
+        .tag { display: inline-block; padding: 0 4px; border-radius: 2px; font-size: var(--fs-xs); }
+        .tag-y { background: rgba(209,154,34,0.15); color: var(--yellow); }
+        .tag-p { background: rgba(188,140,255,0.15); color: var(--purple); }
+        .tag-c { background: rgba(88,166,255,0.15); color: var(--cyan); }
+        .ok { color: var(--green); } .warn { color: var(--yellow); } .err { color: var(--red); }
+        
+        /* Progress bar */
+        .bar { display: inline-block; height: 3px; background: var(--cyan); border-radius: 1px; vertical-align: middle; }
+        
+        /* Alerts */
+        .alert { padding: var(--s3); border-radius: 2px; margin-bottom: var(--s3); font-size: var(--fs-sm); border-left: 2px solid var(--green); background: rgba(63,185,80,0.08); }
+        .alert.e { border-color: var(--red); background: rgba(248,81,73,0.08); }
+        .alert b { display: block; margin-bottom: 2px; }
+        
+        /* Section header */
+        .sec { font-size: var(--fs-sm); font-weight: 600; margin: var(--s4) 0 var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: var(--s3); }
+        .sec .n { font-size: var(--fs-xs); color: var(--dim); background: var(--card); padding: 0 5px; border-radius: 8px; }
+        
+        /* Grid facts */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2); font-size: var(--fs-sm); }
+        .grid > div { padding: var(--s2) var(--s3); background: var(--card); border-radius: 2px; }
+        
+        /* Code */
+        code { font-family: Consolas, monospace; font-size: var(--fs-xs); background: var(--border); padding: 0 3px; border-radius: 2px; }
+        
+        /* Inline list */
+        .il { display: inline; padding: 0; margin: 0; }
+        .il li { display: inline; }
+        .il li::after { content: ' • '; color: var(--dim); }
+        .il li:last-child::after { content: ''; }
+        
+        footer { margin-top: var(--s5); padding-top: var(--s3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--dim); text-align: center; }
+        @media (max-width: 700px) { .wrap { grid-template-columns: 1fr; } nav { display: none; } }
+    </style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+    <div class="t">Sections</div>
+    <a href="#mods">Mods (16)</a>
+    <a href="#health">Health</a>
+    <a href="#conflicts">Conflicts</a>
+    <a href="#facts">Facts</a>
+    <select onchange="document.documentElement.dataset.theme=this.value">
+        <option value="carbon">Carbon</option>
+        <option value="graphite">Graphite</option>
+        <option value="obsidian">Obsidian</option>
+        <option value="blue">Blue</option>
+    </select>
+</nav>
+<main>
+    <div class="hdr"><h1>7D2D Mod Ecosystem</h1><span>2026-01-02 16:58</span></div>
+    
+    <div class="stats" id="stats">
+        <div><b>15,534</b><span>defs</span></div>
+        <div><b>65,267</b><span>props</span></div>
+        <div><b>47,332</b><span>refs</span></div>
+        <div><b>16</b><span>mods</span></div>
+        <div><b>10</b><span>XML</span></div>
+        <div><b>4</b><span>C#</span></div>
+        <div><b>1</b><span>hybrid</span></div>
+    </div>
+    
+    <details>
+        <summary>Definitions by Type <span class="n">13</span></summary>
+        <div class="body"><table><tr><th>Type</th><th>Count</th><th>%</th></tr>
+        <tr><td>block</td><td>6,289</td><td><span class="bar" style="width:32px"></span> 40%</td></tr>
+<tr><td>sound</td><td>2,453</td><td><span class="bar" style="width:12px"></span> 15%</td></tr>
+<tr><td>entity_group</td><td>1,877</td><td><span class="bar" style="width:9px"></span> 12%</td></tr>
+<tr><td>item</td><td>1,375</td><td><span class="bar" style="width:7px"></span> 8%</td></tr>
+<tr><td>loot_group</td><td>1,002</td><td><span class="bar" style="width:5px"></span> 6%</td></tr>
+<tr><td>game_event</td><td>889</td><td><span class="bar" style="width:4px"></span> 5%</td></tr>
+<tr><td>recipe</td><td>588</td><td><span class="bar" style="width:3px"></span> 3%</td></tr>
+<tr><td>buff</td><td>461</td><td><span class="bar" style="width:2px"></span> 2%</td></tr>
+<tr><td>entity_class</td><td>292</td><td><span class="bar" style="width:1px"></span> 1%</td></tr>
+<tr><td>quest</td><td>229</td><td><span class="bar" style="width:1px"></span> 1%</td></tr>
+<tr><td>perk</td><td>57</td><td><span class="bar" style="width:1px"></span> 0%</td></tr>
+<tr><td>skill</td><td>16</td><td><span class="bar" style="width:1px"></span> 0%</td></tr>
+<tr><td>vehicle</td><td>6</td><td><span class="bar" style="width:1px"></span> 0%</td></tr>
+        </table></div>
+    </details>
+    
+    <details>
+        <summary>XML Operations <span class="n">55</span></summary>
+        <div class="body"><table><tr><th>Op</th><th>Count</th></tr>
+        <tr><td>append</td><td>35</td></tr>
+<tr><td>set</td><td>11</td></tr>
+<tr><td>csv</td><td>5</td></tr>
+<tr><td>remove</td><td>3</td></tr>
+<tr><td>removeattribute</td><td>1</td></tr>
+        </table></div>
+    </details>
+    
+    <details>
+        <summary>C# Analysis <span class="n">122</span></summary>
+        <div class="body">
+        <table><tr><th>Type</th><th>Count</th></tr><tr><td>🔌 Harmony: Target Class</td><td>50</td></tr>
+<tr><td>🔌 Harmony: Target Method</td><td>49</td></tr>
+<tr><td>🔊 Sound Lookup</td><td>6</td></tr>
+<tr><td>🔌 Harmony: Postfix Patch</td><td>5</td></tr>
+<tr><td>🔌 Harmony: Prefix Patch</td><td>5</td></tr>
+<tr><td>🔧 Implements IModApi</td><td>5</td></tr>
+<tr><td>🧬 Extends Entity</td><td>1</td></tr>
+<tr><td>📦 Item Lookup</td><td>1</td></tr></table>
+        <div style='margin-top:var(--s3);'><b style='color:var(--purple);font-size:var(--fs-xs);'>HARMONY PATCHES</b></div><table><tr><th>Mod</th><th>Class</th><th>Method</th><th>Type</th></tr><tr><td>0_TFP_Harmony</td><td><code>Type</code></td><td><code></code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>AudibleBreakingGlassJars</td><td><code>ItemActionEat</code></td><td><code>consume</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>AudibleBreakingGlassJars</td><td><code>ItemActionEat</code></td><td><code>ExecuteInstantAction</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>AnimatorRangedReloadState</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Bag</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ConnectionManager</code></td><td><code>ProcessPackages</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>EntityVehicle</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>GameManager</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>Inventory</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryCraft</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionEntryPurchase</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRanged</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionRepair</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>ItemActionTextureBlock</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_HUDStatBar</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_IngredientEntry</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_ItemStack</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_LootContainer</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_PowerSourceStats</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeCraftCount</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_RecipeList</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleContainer</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_VehicleStorageWindowGroup</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationOutputGrid</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiC_WorkstationWindowGroup</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_PlayerInventory</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>BuildRecipeInfosList</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>StartGame</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>TELockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>TEUnlockServer</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>hasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>calcMaxCraftable</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>HasItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>RemoveItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>CanReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>GetAmmoCountToReload</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>hasGasCan</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>takeFuel</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>RefreshEnabled</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>OnClose</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>HandleLootSlotChangedEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>HandleSlotChangeEvent</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>UpdateBackend</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>checkAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>decreaseAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>CanRemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>RemoveRequiredResource</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>BtnRefuel_OnPress</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>RepairVehicle</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>updateActiveItemAmmo</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>DecItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>AddItem</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>ProxiCraft</td><td><code>XUiM_Vehicle</code></td><td><code>CanSwapItems</code></td><td><span class="tag tag-p">Prefix</span></td></tr>
+<tr><td>QuickStack</td><td><code>GameManager</code></td><td><code>Init</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>GameManager</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>GameManager</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>GameManager</code></td><td><code>UpdateTick</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>GameManager</code></td><td><code>updateBorderColor</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_BackpackWindow</code></td><td><code>Init</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_BackpackWindow</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_BackpackWindow</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_BackpackWindow</code></td><td><code>UpdateTick</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_BackpackWindow</code></td><td><code>updateBorderColor</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_ItemStack</code></td><td><code>Init</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_ItemStack</code></td><td><code>OnOpen</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_ItemStack</code></td><td><code>GetBindingValueInternal</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_ItemStack</code></td><td><code>UpdateTick</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>QuickStack</td><td><code>XUiC_ItemStack</code></td><td><code>updateBorderColor</code></td><td><span class="tag tag-p">Postfix</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>BlockDoorSecure</code></td><td><code>SetLocked</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>BlockDoorSecure</code></td><td><code>OnReadComplete</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>BlockDoorSecure</code></td><td><code>OnTriggered</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>BlockDoorSecure</code></td><td><code>Reset</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntity</code></td><td><code>SetLocked</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntity</code></td><td><code>OnReadComplete</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntity</code></td><td><code>OnTriggered</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntity</code></td><td><code>Reset</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntityLootContainer</code></td><td><code>SetLocked</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntityLootContainer</code></td><td><code>OnReadComplete</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntityLootContainer</code></td><td><code>OnTriggered</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntityLootContainer</code></td><td><code>Reset</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntitySecure</code></td><td><code>SetLocked</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntitySecure</code></td><td><code>OnReadComplete</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntitySecure</code></td><td><code>OnTriggered</code></td><td><span class="tag tag-p">Patch</span></td></tr>
+<tr><td>UnlockOpenDoors</td><td><code>TileEntitySecure</code></td><td><code>Reset</code></td><td><span class="tag tag-p">Patch</span></td></tr></table>
+        <div style='margin-top:var(--s3);'><b style='color:var(--cyan);font-size:var(--fs-xs);'>CLASS EXTENSIONS</b></div><table><tr><th>Mod</th><th>Base</th><th>Class</th></tr><tr><td>0_TFP_Harmony</td><td><span class="tag tag-c">imodapi</span></td><td><code>IModApi</code></td></tr>
+<tr><td>AudibleBreakingGlassJars</td><td><span class="tag tag-c">imodapi</span></td><td><code>IModApi</code></td></tr>
+<tr><td>AudibleBreakingGlassJars</td><td><span class="tag tag-c">entity</span></td><td><code>Entity</code></td></tr>
+<tr><td>ProxiCraft</td><td><span class="tag tag-c">imodapi</span></td><td><code>IModApi</code></td></tr>
+<tr><td>QuickStack</td><td><span class="tag tag-c">imodapi</span></td><td><code>IModApi</code></td></tr>
+<tr><td>UnlockOpenDoors</td><td><span class="tag tag-c">imodapi</span></td><td><code>IModApi</code></td></tr></table>
+        </div>
+    </details>
+    
+    <div class="sec" id="mods">Installed Mods <span class="n">16</span></div>
+    <details>
+                <summary>AGF-V2-Backpack72Plus-v3.2.0 <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>AuroraGiggleFairy (AGF)</b> • v3.2.0 • <a href='https://auroragigglefairy.github.io/' target='_blank'>https://auroragigglefairy.github.io/</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>72 slot backpack and extra large storage options.</div>
+<div style='margin-bottom:var(--s2);'>🎒 Increases backpack size to 2 slots</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds new block(s) • &#128200; Sets carry capacity to 72slots for &#39;god&#39; • &#128200; Sets carry capacity to 77slots for &#39;buffDrugSteroids&#39; • &#128200; Sets carry capacity to 77slots for &#39;twitch_buffPackMule&#39; • &#128200; Sets carry capacity to 31slots for &#39;twitch_buffEncumbered&#39;
+ <span style='color:var(--dim);'>+8 more</span>
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Config, Buffs/Effects, Entities/Spawning</div>
+</div></details>
+<details>
+                <summary>zByteblazarsScreamers <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Byteblazar</b> • v1.1.1.3</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Makes screamers more... interesting.</div>
+<div style='margin-bottom:var(--s2);'>🧟 Modifies screamer zombie behavior</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds new item(s)
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Config</div>
+</div></details>
+<details>
+                <summary>zzzzzzzByteblazarsOlfactoryScreamers <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Byteblazar</b> • v1.0.1.0</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Introduces a new system for spawning screamers based on smell</div>
+<div style='margin-bottom:var(--s2);'>🧟 Modifies screamer zombie behavior</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds to buff &#39;buffStatusCheck01&#39; • ➕ Adds to buff &#39;god&#39;
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Buffs/Effects</div>
+</div></details>
+<details>
+                <summary>BellGoBong <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>bdubyah</b> • v21.2.1.1</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>BellGoBong.</div>
+<div style='margin-bottom:var(--s2);'>➕ Adds new block(s)</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds new block(s) • ➕ Adds to buff &#39;buffStatusCheck02&#39;
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Config, Buffs/Effects</div>
+</div></details>
+<details>
+                <summary>zzzzzzByteblazarsNoHeatGeneration <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Intentionally removes 2 game element(s)</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Byteblazar</b> • v1.0.0.0</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Prevents heat generation.</div>
+<div style='margin-bottom:var(--s2);'>🔥 Reduces or removes heat map generation</div>
+<div class='warn' style='margin-top:var(--s2);'>⚠ ⚠️ Removes game content (may break other mods that depend on it)</div>
+</div></details>
+<details>
+                <summary>WoodleCoffs <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>bdubyah</b> • v1.0.0.1</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Woodle Coffe Decals.</div>
+<div style='margin-bottom:var(--s2);'>➕ Adds new block(s)</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds new block(s) • ➕ Adds new recipe(s)
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Config</div>
+</div></details>
+<details>
+                <summary>WoodleSigns <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via XML</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>bdubyah</b> • v1.0.0.1</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Woodle Neon Signs.</div>
+<div style='margin-bottom:var(--s2);'>➕ Adds new block(s)</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+➕ Adds new block(s) • ➕ Adds new recipe(s)
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Config</div>
+</div></details>
+<details>
+                <summary>WoodleSpeaker <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Intentionally removes 1 game element(s)</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Genosis</b> • v1.0 • <a href='https://youtube.com/Genosis' target='_blank'>https://youtube.com/Genosis</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Plays a customized sound to replace the player crafted alarm speaker</div>
+<div style='margin-bottom:var(--s2);'>🗑️ Removes sound 'alarm1'</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+&#128465;️ Removes sound &#39;alarm1&#39;
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Audio</div>
+<div class='warn' style='margin-top:var(--s2);'>⚠ ⚠️ Removes game content (may break other mods that depend on it)</div>
+</div></details>
+<details>
+                <summary>ProxiCraft <span class="tag">C# Code</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via C# code patches</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>rk-gamemods</b> • v1.2.2 • <a href='https://github.com/rk-gamemods/7D2D-ProxiCraft' target='_blank'>https://github.com/rk-gamemods/7D2D-ProxiCraft</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Craft, reload, refuel, paint, lockpick, and repair using items from nearby containers. Supports: storage containers, vehicle bags, drone cargo, dew collectors, and workstation outputs. Features: Challenge tracker integration, startup health check, auto-adaptation to game updates, balanced 15-block default range, real-time updates, and robust error handling.</div>
+<div style='margin-bottom:var(--s2);'>📦 Craft using items from nearby storage containers</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+⚙️ Patches game code: ConnectionManager • &#127918; Runs custom code when game starts • &#128296; Changes how recipes are unlocked • &#128230; Lets you craft using items from nearby storage containers (not just your backpack) • &#128230; Takes crafting materials from nearby containers automatically
+ <span style='color:var(--dim);'>+15 more</span>
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Code, Core, Crafting, UI, Combat, Vehicles, Loot, Blocks, Items, Inventory</div>
+</div></details>
+<details>
+                <summary>AudibleBreakingGlassJars <span class="tag tag-c">Hybrid</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via C# code patches</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>rk-gamemods</b> • v1.0.0</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Plays a glass breaking sound when drinking fluids causes the glass jar to break and not be returned to inventory. Works with the game&#39;s jar return percentage setting.</div>
+<div style='margin-bottom:var(--s2);'>🔊 Plays glass breaking sound when consuming jarred items</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+&#128266; Plays a sound effect when consuming items (e.g., glass breaking) • ⚙️ Extends game class: Entity
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Audio</div>
+</div></details>
+<details>
+                <summary>QuickStack <span class="tag">C# Code</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via C# code patches</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Westwud</b> • v1.7.3 • <a href='https://www.nexusmods.com/7daystodie/mods/1357' target='_blank'>https://www.nexusmods.com/7daystodie/mods/1357</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Enables the player to quickly deposit/restock items from their inventory to nearby containers without the need to open them.</div>
+<div style='margin-bottom:var(--s2);'>🎒 Modifies backpack/inventory size or behavior</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+&#127890; Modifies backpack/inventory size or behavior • &#127918; Hooks into core game manager • ⚙️ Patches game code: XUiC_ItemStack
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Inventory, Core, Game Code</div>
+</div></details>
+<details>
+                <summary>UnlockOpenDoors <span class="tag">C# Code</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via C# code patches</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Dizor</b> • v1.8 • <a href='https://github.com/IDizor/7D2D-UnlockOpenDoors' target='_blank'>https://github.com/IDizor/7D2D-UnlockOpenDoors</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Unlocks annoying locked open doors.</div>
+<div style='margin-bottom:var(--s2);'>🔓 Interact with locked doors/containers differently</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+&#128275; Changes how locked doors/containers work • &#129521; Modifies block behavior • &#128230; Modifies loot container behavior
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Security, Blocks, Loot</div>
+</div></details>
+<details>
+                <summary>0_TFP_Harmony <span class="tag">C# Code</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Modifies game via C# code patches</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>The Fun Pimps LLC</b> • v1.1.0.4</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Sets up basic HarmonyX configuration to be used with 7 Days to Die</div>
+<div style='margin-bottom:var(--s2);'>⚙️ Core Harmony library (required by other mods)</div>
+<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> 
+⚙️ Patches game code: Type
+</div>
+<div style='color:var(--dim);'><b>Systems:</b> Game Code</div>
+</div></details>
+<details>
+                <summary>AGF-V2-HUDPlus-1Main-v5.2.0 <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>XML mod (no changes detected)</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>AuroraGiggleFairy (AGF)</b> • v5.2.0 • <a href='https://auroragigglefairy.github.io/' target='_blank'>https://auroragigglefairy.github.io/</a></div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>QOL HUD with lots of features.</div>
+<div style='margin-bottom:var(--s2);'>🖥️ Enhanced HUD/UI elements</div>
+</div></details>
+<details>
+                <summary>Extended World Settings <span class="tag">Assets</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>Asset-only mod (textures, sounds, etc.)</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>ShadowOsmium</b> • v1.0</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Changes the game&#39;s options to be more sandbox-like, including more day/night length options, more XP multiplier options, higher loot abundance, and more!</div>
+<div style='margin-bottom:var(--s2);'>📦 Asset/configuration mod</div>
+</div></details>
+<details>
+                <summary>ToiletBatons <span class="tag tag-y">XML</span> <span class="ok">✓</span></summary>
+                <div class="body">
+<div style='color:var(--dim);margin-bottom:var(--s2);'>XML mod (no changes detected)</div>
+<div style='color:var(--dim);margin-bottom:var(--s2);'>by <b>Cameo Sorren</b> • v1.0.0</div>
+<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>Adds Pipe Baton and Stun Baton to possible loot in toilets</div>
+<div style='margin-bottom:var(--s2);'>📄 XML mod (changes game data - expand for details)</div>
+</div></details>
+
+    
+    <div class="sec" id="health">Ecosystem Health</div>
+    <div class="stats">
+        <div><b>15,533</b><span>active</span></div>
+        <div><b>8</b><span>modified</span></div>
+        <div><b>1</b><span>removed</span></div>
+        <div><b>2</b><span>C# deps</span></div>
+    </div>
+    <div class="alert"><b>✓ No Critical Conflicts</b>All C# dependencies satisfied.</div>
+    
+    <div class="sec" id="conflicts">Shared Entities <span class="n">1</span></div>
+    <details>
+                <summary><span class="ok">Low</span> buff/god</summary>
+                <div class="body">
+                    <div style='color:var(--dim);margin-bottom:var(--s2);'>Mix of overwrites and additions - usually compatible</div>
+                    <div>2 mods: zzzzzzzByteblazarsOlfactoryScreamers (append), AGF-V2-Backpack72Plus-v3.2.0 (set)</div>
+                </div>
+            </details>
+
+    
+    <div class="sec" id="facts">Fun Facts</div>
+    <div class="grid">
+        <div>📏 <b>Longest:</b> questRewardLegendarySteelSledgehammerCraftingBundle</div>
+        <div>🔗 <b>Most ref'd:</b> noteTestersDelightAdmin (776)</div>
+        <div>🏗️ <b>Most complex:</b> vehicleGyrocopter (115)</div>
+        <div>🌐 <b>Connected:</b> twitch_perkBooks (133)</div>
+        <div>🎯 <b>Depended:</b> zombieMaleHazmat (388)</div>
+    </div>
+    
+    <footer>7D2D Mod Ecosystem Analyzer</footer>
+</main>
+</div>
+</body>
+</html>

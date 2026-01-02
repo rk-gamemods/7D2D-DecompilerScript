@@ -3797,239 +3797,164 @@ public class Program
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
     <title>7D2D Mod Ecosystem Report</title>
     <style>
-        /* Theme: Original Blue (legacy) */
-        [data-theme=""blue""] {{ --bg: #1a1a2e; --card: #16213e; --accent: #0f3460; --text: #e8e8e8; --muted: #888; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; --purple: #a78bfa; --primary: #22d3ee; --hover: rgba(15, 52, 96, 0.3); }}
-        
-        /* Theme: Obsidian Slate - Warm amber accent, IDE-inspired */
-        [data-theme=""obsidian""] {{ --bg: #121214; --card: #1c1c1f; --accent: #2a2a2e; --text: #e4e4e7; --muted: #71717a; --green: #34d399; --yellow: #f59e0b; --red: #f87171; --cyan: #a3a3a3; --purple: #a78bfa; --primary: #f59e0b; --hover: rgba(245, 158, 11, 0.08); }}
-        
-        /* Theme: Carbon Neutral - GitHub Dark Dimmed inspired */
-        [data-theme=""carbon""] {{ --bg: #161b22; --card: #1f2428; --accent: #30363d; --text: #c9d1d9; --muted: #8b949e; --green: #3fb950; --yellow: #d29922; --red: #f85149; --cyan: #58a6ff; --purple: #bc8cff; --primary: #8b949e; --hover: rgba(88, 166, 255, 0.06); }}
-        
-        /* Theme: Graphite Moss - Sublime/Monokai inspired */
-        [data-theme=""graphite""] {{ --bg: #1a1a1a; --card: #242424; --accent: #333333; --text: #d4d4d4; --muted: #5c6370; --green: #98c379; --yellow: #e5c07b; --red: #e06c75; --cyan: #56b6c2; --purple: #c678dd; --primary: #98c379; --hover: rgba(152, 195, 121, 0.08); }}
-        
+        :root {{ --s1: 2px; --s2: 4px; --s3: 6px; --s4: 10px; --s5: 14px; --fs-xs: 10px; --fs-sm: 11px; --fs-base: 12px; --fs-md: 13px; }}
+        [data-theme=""carbon""] {{ --bg: #161b22; --bg2: #1c2128; --card: #21262d; --border: #30363d; --text: #c9d1d9; --muted: #8b949e; --dim: #6e7681; --green: #3fb950; --yellow: #d29922; --red: #f85149; --cyan: #58a6ff; --purple: #bc8cff; }}
+        [data-theme=""graphite""] {{ --bg: #1a1a1a; --bg2: #1f1f1f; --card: #262626; --border: #404040; --text: #d4d4d4; --muted: #888; --dim: #666; --green: #98c379; --yellow: #e5c07b; --red: #e06c75; --cyan: #56b6c2; --purple: #c678dd; }}
+        [data-theme=""obsidian""] {{ --bg: #121214; --bg2: #18181b; --card: #1f1f23; --border: #3f3f46; --text: #e4e4e7; --muted: #a1a1aa; --dim: #71717a; --green: #34d399; --yellow: #f59e0b; --red: #f87171; --cyan: #a3a3a3; --purple: #a78bfa; }}
+        [data-theme=""blue""] {{ --bg: #1a1a2e; --bg2: #16213e; --card: #1a2744; --border: #2a4a6e; --text: #e8e8e8; --muted: #aaa; --dim: #888; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; --purple: #a78bfa; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        h1 {{ color: var(--primary); margin-bottom: 0.5rem; font-size: 2.5rem; }}
-        h2 {{ color: var(--primary); margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }}
-        h3 {{ color: var(--text); margin: 1rem 0 0.5rem; }}
-        .subtitle {{ color: var(--muted); margin-bottom: 2rem; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }}
-        .card {{ background: var(--card); border-radius: 8px; padding: 1.5rem; border: 1px solid var(--accent); }}
-        .stat-value {{ font-size: 2rem; font-weight: bold; color: var(--primary); }}
-        .stat-label {{ color: var(--muted); font-size: 0.9rem; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
-        th, td {{ padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--accent); }}
-        th {{ background: var(--accent); color: var(--text); font-weight: 600; }}
-        tr:hover {{ background: var(--hover); }}
-        .bar {{ height: 20px; background: var(--primary); border-radius: 4px; }}
-        .status-ok {{ color: var(--green); }}
-        .status-removes {{ color: var(--yellow); }}
-        .status-conflict {{ color: var(--red); }}
-        .status-csharp, .status-c\# {{ color: var(--cyan); }}
-        .status-passive {{ color: var(--muted); }}
-        .danger {{ background: rgba(248, 113, 113, 0.1); border: 1px solid var(--red); border-radius: 8px; padding: 1rem; margin: 1rem 0; }}
-        .danger h3 {{ color: var(--red); }}
-        .success {{ background: rgba(74, 222, 128, 0.1); border: 1px solid var(--green); border-radius: 8px; padding: 1rem; }}
-        .fun-fact {{ background: var(--accent); padding: 0.5rem 1rem; border-radius: 4px; margin: 0.5rem 0; }}
-        footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--accent); color: var(--muted); text-align: center; }}
-        /* Collapsible sections */
-        details {{ margin: 1rem 0; }}
-        summary {{ cursor: pointer; padding: 0.75rem 1rem; background: var(--card); border: 1px solid var(--accent); border-radius: 8px; font-weight: 500; }}
-        summary:hover {{ background: var(--accent); }}
-        summary::marker {{ color: var(--primary); }}
-        details[open] summary {{ border-radius: 8px 8px 0 0; border-bottom: none; }}
-        details > div {{ border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; padding: 1rem; background: var(--card); }}
-        .badge {{ display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0; font-weight: 500; }}
-        .badge-purple {{ background: rgba(167, 139, 250, 0.2); color: var(--purple); }}
-        .badge-cyan {{ background: rgba(88, 166, 255, 0.15); color: var(--cyan); }}
-        .badge-green {{ background: rgba(74, 222, 128, 0.2); color: var(--green); }}
-        /* Mod type badges */
-        .badge-xml {{ background: rgba(251, 191, 36, 0.2); color: var(--yellow); }}
-        .badge-csharp-code {{ background: rgba(167, 139, 250, 0.2); color: var(--purple); }}
-        .badge-hybrid {{ background: rgba(34, 211, 238, 0.2); color: var(--cyan); }}
-        .badge-assets {{ background: rgba(100, 100, 100, 0.2); color: var(--muted); }}
-        /* Health indicators */
-        .health-healthy {{ color: var(--green); }}
-        .health-review {{ color: var(--yellow); }}
-        .health-broken {{ color: var(--red); }}
-        /* Theme selector */
-        .theme-selector {{ position: fixed; top: 1rem; right: 1rem; background: var(--card); border: 1px solid var(--accent); border-radius: 6px; padding: 0.5rem; z-index: 1000; }}
-        .theme-selector label {{ color: var(--muted); font-size: 0.8rem; display: block; margin-bottom: 0.25rem; }}
-        .theme-selector select {{ background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 4px; padding: 0.25rem 0.5rem; cursor: pointer; }}
+        body {{ font-family: 'Segoe UI', -apple-system, sans-serif; font-size: var(--fs-base); background: var(--bg); color: var(--text); line-height: 1.4; }}
+        a {{ color: var(--cyan); }}
+        
+        /* Two-column layout */
+        .wrap {{ display: grid; grid-template-columns: 160px 1fr; min-height: 100vh; }}
+        nav {{ background: var(--bg2); border-right: 1px solid var(--border); padding: var(--s4); position: sticky; top: 0; height: 100vh; font-size: var(--fs-sm); }}
+        nav a {{ display: block; padding: var(--s2) var(--s3); color: var(--muted); text-decoration: none; border-radius: 2px; }}
+        nav a:hover {{ background: var(--card); color: var(--text); }}
+        nav .t {{ font-size: var(--fs-xs); text-transform: uppercase; color: var(--dim); margin: var(--s4) 0 var(--s2); }}
+        nav select {{ width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 2px; padding: var(--s2); font-size: var(--fs-xs); margin-top: var(--s5); }}
+        main {{ padding: var(--s4); }}
+        
+        /* Header */
+        .hdr {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: var(--s3); margin-bottom: var(--s4); }}
+        .hdr h1 {{ font-size: var(--fs-md); font-weight: 600; }}
+        .hdr span {{ font-size: var(--fs-xs); color: var(--dim); }}
+        
+        /* Stat row */
+        .stats {{ display: flex; gap: var(--s5); flex-wrap: wrap; font-size: var(--fs-sm); margin-bottom: var(--s4); padding-bottom: var(--s3); border-bottom: 1px solid var(--border); }}
+        .stats b {{ color: var(--cyan); margin-right: 2px; }}
+        .stats span {{ color: var(--dim); }}
+        
+        /* Unified details/collapsible */
+        details {{ margin-bottom: var(--s2); }}
+        summary {{ cursor: pointer; padding: var(--s2) var(--s3); background: var(--card); border: 1px solid var(--border); border-radius: 2px; font-size: var(--fs-sm); list-style: none; display: flex; align-items: center; gap: var(--s3); }}
+        summary::-webkit-details-marker {{ display: none; }}
+        summary::before {{ content: '▸'; color: var(--dim); font-size: 10px; }}
+        details[open] > summary::before {{ content: '▾'; }}
+        details[open] > summary {{ border-radius: 2px 2px 0 0; background: var(--border); }}
+        summary:hover {{ background: var(--border); }}
+        .body {{ border: 1px solid var(--border); border-top: none; border-radius: 0 0 2px 2px; padding: var(--s3); background: var(--bg2); font-size: var(--fs-sm); }}
+        
+        /* Tables */
+        table {{ width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }}
+        th, td {{ padding: var(--s2) var(--s3); text-align: left; border-bottom: 1px solid var(--border); }}
+        th {{ font-size: var(--fs-xs); text-transform: uppercase; color: var(--dim); font-weight: 500; background: var(--bg); }}
+        tr:hover {{ background: var(--card); }}
+        
+        /* Badges */
+        .tag {{ display: inline-block; padding: 0 4px; border-radius: 2px; font-size: var(--fs-xs); }}
+        .tag-y {{ background: rgba(209,154,34,0.15); color: var(--yellow); }}
+        .tag-p {{ background: rgba(188,140,255,0.15); color: var(--purple); }}
+        .tag-c {{ background: rgba(88,166,255,0.15); color: var(--cyan); }}
+        .ok {{ color: var(--green); }} .warn {{ color: var(--yellow); }} .err {{ color: var(--red); }}
+        
+        /* Progress bar */
+        .bar {{ display: inline-block; height: 3px; background: var(--cyan); border-radius: 1px; vertical-align: middle; }}
+        
+        /* Alerts */
+        .alert {{ padding: var(--s3); border-radius: 2px; margin-bottom: var(--s3); font-size: var(--fs-sm); border-left: 2px solid var(--green); background: rgba(63,185,80,0.08); }}
+        .alert.e {{ border-color: var(--red); background: rgba(248,81,73,0.08); }}
+        .alert b {{ display: block; margin-bottom: 2px; }}
+        
+        /* Section header */
+        .sec {{ font-size: var(--fs-sm); font-weight: 600; margin: var(--s4) 0 var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: var(--s3); }}
+        .sec .n {{ font-size: var(--fs-xs); color: var(--dim); background: var(--card); padding: 0 5px; border-radius: 8px; }}
+        
+        /* Grid facts */
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2); font-size: var(--fs-sm); }}
+        .grid > div {{ padding: var(--s2) var(--s3); background: var(--card); border-radius: 2px; }}
+        
+        /* Code */
+        code {{ font-family: Consolas, monospace; font-size: var(--fs-xs); background: var(--border); padding: 0 3px; border-radius: 2px; }}
+        
+        /* Inline list */
+        .il {{ display: inline; padding: 0; margin: 0; }}
+        .il li {{ display: inline; }}
+        .il li::after {{ content: ' • '; color: var(--dim); }}
+        .il li:last-child::after {{ content: ''; }}
+        
+        footer {{ margin-top: var(--s5); padding-top: var(--s3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--dim); text-align: center; }}
+        @media (max-width: 700px) {{ .wrap {{ grid-template-columns: 1fr; }} nav {{ display: none; }} }}
     </style>
 </head>
 <body>
-    <div class=""theme-selector"">
-        <label>Theme</label>
-        <select onchange=""document.documentElement.dataset.theme=this.value"">
-            <option value=""carbon"">Carbon Neutral</option>
-            <option value=""graphite"">Graphite Moss</option>
-            <option value=""obsidian"">Obsidian Slate</option>
-            <option value=""blue"">Original Blue</option>
-        </select>
+<div class=""wrap"">
+<nav>
+    <div class=""t"">Sections</div>
+    <a href=""#mods"">Mods ({data.TotalMods})</a>
+    <a href=""#health"">Health</a>
+    <a href=""#conflicts"">Conflicts</a>
+    <a href=""#facts"">Facts</a>
+    <select onchange=""document.documentElement.dataset.theme=this.value"">
+        <option value=""carbon"">Carbon</option>
+        <option value=""graphite"">Graphite</option>
+        <option value=""obsidian"">Obsidian</option>
+        <option value=""blue"">Blue</option>
+    </select>
+</nav>
+<main>
+    <div class=""hdr""><h1>7D2D Mod Ecosystem</h1><span>{DateTime.Now:yyyy-MM-dd HH:mm}</span></div>
+    
+    <div class=""stats"" id=""stats"">
+        <div><b>{data.TotalDefinitions:N0}</b><span>defs</span></div>
+        <div><b>{data.TotalProperties:N0}</b><span>props</span></div>
+        <div><b>{data.TotalReferences:N0}</b><span>refs</span></div>
+        <div><b>{data.TotalMods}</b><span>mods</span></div>
+        <div><b>{data.XmlMods}</b><span>XML</span></div>
+        <div><b>{data.CSharpMods}</b><span>C#</span></div>
+        <div><b>{data.HybridMods}</b><span>hybrid</span></div>
     </div>
-    <div class=""container"">
-        <h1>🎮 7D2D Mod Ecosystem Report</h1>
-        <p class=""subtitle"">Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>
-
-        <h2>📊 Base Game Statistics</h2>
-        <div class=""grid"">
-            <div class=""card"">
-                <div class=""stat-value"">{data.TotalDefinitions:N0}</div>
-                <div class=""stat-label"">Total Definitions</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.TotalProperties:N0}</div>
-                <div class=""stat-label"">Total Properties</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.TotalReferences:N0}</div>
-                <div class=""stat-label"">Cross-References</div>
-            </div>
+    
+    <details>
+        <summary>Definitions by Type <span class=""n"">{data.DefinitionsByType.Count}</span></summary>
+        <div class=""body""><table><tr><th>Type</th><th>Count</th><th>%</th></tr>
+        {string.Join("\n", data.DefinitionsByType.Select(kv => $@"<tr><td>{kv.Key}</td><td>{kv.Value:N0}</td><td><span class=""bar"" style=""width:{Math.Max(kv.Value * 80 / Math.Max(data.TotalDefinitions, 1), 1)}px""></span> {kv.Value * 100 / Math.Max(data.TotalDefinitions, 1)}%</td></tr>"))}
+        </table></div>
+    </details>
+    
+    <details>
+        <summary>XML Operations <span class=""n"">{data.OperationsByType.Values.Sum()}</span></summary>
+        <div class=""body""><table><tr><th>Op</th><th>Count</th></tr>
+        {string.Join("\n", data.OperationsByType.Select(kv => $"<tr><td>{kv.Key}</td><td>{kv.Value}</td></tr>"))}
+        </table></div>
+    </details>
+    
+    <details>
+        <summary>C# Analysis <span class=""n"">{data.CSharpByType.Values.Sum()}</span></summary>
+        <div class=""body"">
+        {(data.CSharpByType.Any() ? $@"<table><tr><th>Type</th><th>Count</th></tr>{string.Join("\n", data.CSharpByType.Select(kv => $"<tr><td>{FormatCSharpDepType(kv.Key)}</td><td>{kv.Value}</td></tr>"))}</table>" : "<span style='color:var(--dim);'>None</span>")}
+        {(data.HarmonyPatches.Any() ? $@"<div style='margin-top:var(--s3);'><b style='color:var(--purple);font-size:var(--fs-xs);'>HARMONY PATCHES</b></div><table><tr><th>Mod</th><th>Class</th><th>Method</th><th>Type</th></tr>{string.Join("\n", data.HarmonyPatches.Select(p => $@"<tr><td>{p.ModName}</td><td><code>{p.ClassName}</code></td><td><code>{p.MethodName}</code></td><td><span class=""tag tag-p"">{p.PatchType}</span></td></tr>"))}</table>" : "")}
+        {(data.ClassExtensions.Any() ? $@"<div style='margin-top:var(--s3);'><b style='color:var(--cyan);font-size:var(--fs-xs);'>CLASS EXTENSIONS</b></div><table><tr><th>Mod</th><th>Base</th><th>Class</th></tr>{string.Join("\n", data.ClassExtensions.Select(e => $@"<tr><td>{e.ModName}</td><td><span class=""tag tag-c"">{e.BaseClass}</span></td><td><code>{e.ChildClass}</code></td></tr>"))}</table>" : "")}
         </div>
-
-        <details>
-            <summary>📋 Definitions by Type ({data.DefinitionsByType.Count} types)</summary>
-            <div>
-                <table>
-                    <tr><th>Type</th><th>Count</th><th>Distribution</th></tr>
-                    {string.Join("\n", data.DefinitionsByType.Select(kv => $@"
-                    <tr>
-                        <td>{kv.Key}</td>
-                        <td>{kv.Value:N0}</td>
-                        <td><div class=""bar"" style=""width: {Math.Min(kv.Value * 100 / data.TotalDefinitions, 100)}%""></div></td>
-                    </tr>"))}
-                </table>
-            </div>
-        </details>
-
-        <h2>🔧 Mod Statistics</h2>
-        <div class=""grid"">
-            <div class=""card"">
-                <div class=""stat-value"">{data.TotalMods}</div>
-                <div class=""stat-label"">Total Mods</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.XmlMods}</div>
-                <div class=""stat-label"">XML-Only Mods</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.CSharpMods}</div>
-                <div class=""stat-label"">C#-Only Mods</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.HybridMods}</div>
-                <div class=""stat-label"">Hybrid Mods</div>
-            </div>
-        </div>
-
-        <details>
-            <summary>📝 XML Operations by Type ({data.OperationsByType.Values.Sum()} total)</summary>
-            <div>
-                <table>
-                    <tr><th>Operation</th><th>Count</th></tr>
-                    {string.Join("\n", data.OperationsByType.Select(kv => $"<tr><td>{kv.Key}</td><td>{kv.Value}</td></tr>"))}
-                </table>
-            </div>
-        </details>
-
-        <details>
-            <summary>⚙️ C# Analysis ({data.CSharpByType.Values.Sum()} hooks/dependencies)</summary>
-            <div>
-                {(data.CSharpByType.Any() ? $@"
-                <h4 style=""color: var(--purple); margin-bottom: 1rem;"">Dependencies by Type</h4>
-                <table>
-                    <tr><th>Type</th><th>Count</th></tr>
-                    {string.Join("\n", data.CSharpByType.Select(kv => $"<tr><td>{FormatCSharpDepType(kv.Key)}</td><td>{kv.Value}</td></tr>"))}
-                </table>" : "<p>No C# dependencies detected.</p>")}
-
-                {(data.HarmonyPatches.Any() ? $@"
-                <h4 style=""color: var(--purple); margin: 1.5rem 0 1rem;"">🔌 Harmony Patches</h4>
-                <table>
-                    <tr><th>Mod</th><th>Target Class</th><th>Method</th><th>Patch Type</th></tr>
-                    {string.Join("\n", data.HarmonyPatches.Select(p => $@"<tr><td>{p.ModName}</td><td><code>{p.ClassName}</code></td><td><code>{p.MethodName}</code></td><td><span class=""badge badge-purple"">{p.PatchType}</span></td></tr>"))}
-                </table>" : "")}
-
-                {(data.ClassExtensions.Any() ? $@"
-                <h4 style=""color: var(--cyan); margin: 1.5rem 0 1rem;"">🧬 Class Extensions</h4>
-                <table>
-                    <tr><th>Mod</th><th>Extends/Implements</th><th>Class Name</th></tr>
-                    {string.Join("\n", data.ClassExtensions.Select(e => $@"<tr><td>{e.ModName}</td><td><span class=""badge badge-cyan"">{e.BaseClass}</span></td><td><code>{e.ChildClass}</code></td></tr>"))}
-                </table>" : "")}
-            </div>
-        </details>
-
-        <h2>🌍 Ecosystem Health</h2>
-        <div class=""grid"">
-            <div class=""card"">
-                <div class=""stat-value"">{data.ActiveEntities:N0}</div>
-                <div class=""stat-label"">Active Entities</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.ModifiedEntities}</div>
-                <div class=""stat-label"">Modified by Mods</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.RemovedEntities}</div>
-                <div class=""stat-label"">Removed by Mods</div>
-            </div>
-            <div class=""card"">
-                <div class=""stat-value"">{data.DependedEntities}</div>
-                <div class=""stat-label"">C# Dependencies</div>
-            </div>
-        </div>
-
-        {(data.DangerZone.Any() ? $@"
-        <div class=""danger"">
-            <h3>⚠️ Critical Conflicts Detected</h3>
-            <table>
-                <tr><th>Entity</th><th>Removed By</th><th>Needed By</th></tr>
-                {string.Join("\n", data.DangerZone.Select(d => $"<tr><td>{d.Type}/{d.Name}</td><td>{d.RemovedBy}</td><td>{d.DependedBy}</td></tr>"))}
-            </table>
-        </div>" : @"
-        <div class=""success"">
-            <h3>✓ No Critical Conflicts Detected</h3>
-            <p>All C# mod dependencies are satisfied.</p>
-        </div>")}
-
-        <details open>
-            <summary>📦 Mod Overview ({data.ModSummary.Count} mods installed)</summary>
-            <div>
-                <p style=""color: var(--muted); margin-bottom: 1rem;"">
-                    <strong>Type:</strong> How the mod works &nbsp;|&nbsp; 
-                    <strong>Health:</strong> ✅ = Safe to use, ⚠️ = Check notes, ❌ = Has problems
-                </p>
-                <table>
-                    <tr><th>Mod Name</th><th>Type</th><th>Health</th><th>Notes</th></tr>
-                    {string.Join("\n", data.ModSummary.Select(m => $@"
-                    <tr>
-                        <td>{m.Name}</td>
-                        <td><span class=""badge badge-{SanitizeCssClass(m.ModType)}"">{m.ModType}</span></td>
-                        <td class=""health-{m.Health.ToLower()}"">{GetHealthIcon(m.Health)} {m.Health}</td>
-                        <td style=""color: var(--muted); font-size: 0.9rem;"">{m.HealthNote}</td>
-                    </tr>"))}
-                </table>
-            </div>
-        </details>
-
-        {GenerateModBehaviorHtml(data.ModBehaviors)}
-
-        <h2>🎮 Fun Facts</h2>
-        <div class=""fun-fact"">📏 <strong>Longest Item Name:</strong> {data.LongestItemName}</div>
-        <div class=""fun-fact"">🔗 <strong>Most Referenced Item:</strong> {data.MostReferencedItem} ({data.MostReferencedCount:N0} things reference it)</div>
-        <div class=""fun-fact"">🏗️ <strong>Most Complex Entity:</strong> {data.MostComplexEntity} ({data.MostComplexProps:N0} properties)</div>
-        <div class=""fun-fact"">🌐 <strong>Most Connected:</strong> {data.MostConnectedEntity} (references {data.MostConnectedRefs:N0} different things)</div>
-        <div class=""fun-fact"">🎯 <strong>Most Depended Upon:</strong> {data.MostDependedEntity} ({data.MostDependedCount:N0} entities need this)</div>
-
-        {GenerateContestedEntitiesHtml(data.ContestedEntities)}
-
-        <footer>
-            Generated by 7D2D Mod Ecosystem Analyzer
-        </footer>
+    </details>
+    
+    <div class=""sec"" id=""mods"">Installed Mods <span class=""n"">{data.ModSummary.Count}</span></div>
+    {GenerateCombinedModListHtml(data.ModSummary, data.ModBehaviors)}
+    
+    <div class=""sec"" id=""health"">Ecosystem Health</div>
+    <div class=""stats"">
+        <div><b>{data.ActiveEntities:N0}</b><span>active</span></div>
+        <div><b>{data.ModifiedEntities}</b><span>modified</span></div>
+        <div><b>{data.RemovedEntities}</b><span>removed</span></div>
+        <div><b>{data.DependedEntities}</b><span>C# deps</span></div>
     </div>
+    {(data.DangerZone.Any() ? $@"<div class=""alert e""><b>⚠ Critical Conflicts</b><table><tr><th>Entity</th><th>Removed By</th><th>Needed By</th></tr>{string.Join("\n", data.DangerZone.Select(d => $"<tr><td>{d.Type}/{d.Name}</td><td>{d.RemovedBy}</td><td>{d.DependedBy}</td></tr>"))}</table></div>" : @"<div class=""alert""><b>✓ No Critical Conflicts</b>All C# dependencies satisfied.</div>")}
+    
+    <div class=""sec"" id=""conflicts"">Shared Entities <span class=""n"">{data.ContestedEntities.Count}</span></div>
+    {GenerateContestedEntitiesHtml(data.ContestedEntities)}
+    
+    <div class=""sec"" id=""facts"">Fun Facts</div>
+    <div class=""grid"">
+        <div>📏 <b>Longest:</b> {data.LongestItemName}</div>
+        <div>🔗 <b>Most ref'd:</b> {data.MostReferencedItem} ({data.MostReferencedCount:N0})</div>
+        <div>🏗️ <b>Most complex:</b> {data.MostComplexEntity} ({data.MostComplexProps:N0})</div>
+        <div>🌐 <b>Connected:</b> {data.MostConnectedEntity} ({data.MostConnectedRefs:N0})</div>
+        <div>🎯 <b>Depended:</b> {data.MostDependedEntity} ({data.MostDependedCount:N0})</div>
+    </div>
+    
+    <footer>7D2D Mod Ecosystem Analyzer</footer>
+</main>
+</div>
 </body>
 </html>";
 
@@ -4062,10 +3987,26 @@ public class Program
 
     private static string GetHealthIcon(string health) => health switch
     {
-        "Healthy" => "✅",
-        "Review" => "⚠️",
-        "Broken" => "❌",
-        _ => "❓"
+        "Healthy" => "✓",
+        "Review" => "⚠",
+        "Broken" => "✗",
+        _ => "?"
+    };
+    
+    private static string GetHealthClass(string health) => health switch
+    {
+        "Healthy" => "ok",
+        "Review" => "warn",
+        "Broken" => "err",
+        _ => ""
+    };
+    
+    private static string GetModTypeBadgeClass(string modType) => modType.ToLower() switch
+    {
+        "xml" => "tag tag-y",
+        "c#" or "csharp" => "tag tag-p",
+        "hybrid" => "tag tag-c",
+        _ => "tag"
     };
 
     private static string SanitizeCssClass(string input) => 
@@ -4074,164 +4015,79 @@ public class Program
     private static string GenerateContestedEntitiesHtml(List<ContestedEntity> entities)
     {
         if (!entities.Any())
-        {
-            return @"
-        <div class=""success"" style=""margin-top: 1rem;"">
-            <h3>✓ No Shared Entities</h3>
-            <p>No game entities are modified by multiple mods - no conflicts possible!</p>
-        </div>";
-        }
+            return @"<div class=""alert"">✓ No entities modified by multiple mods.</div>";
 
-        var hasRisks = entities.Any(c => c.RiskLevel == "High" || c.RiskLevel == "Medium");
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($@"
-        <details{(hasRisks ? " open" : "")}>
-            <summary>⚡ Shared Entities ({entities.Count} entities touched by multiple mods)</summary>
-            <div>
-                <p style=""color: var(--muted); margin-bottom: 1rem;"">
-                    <strong>Risk Levels:</strong> 
-                    <span style=""color: var(--red);"">🔴 High</span> = Likely conflict &nbsp;|&nbsp;
-                    <span style=""color: var(--yellow);"">🟡 Medium</span> = May conflict &nbsp;|&nbsp;
-                    <span style=""color: var(--green);"">🟢 Low/None</span> = Compatible
-                </p>");
-        
         foreach (var c in entities)
         {
-            sb.AppendLine($@"
-                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: var(--card); border-radius: 8px; border-left: 4px solid {GetRiskColor(c.RiskLevel)};"">
-                    <div style=""display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;"">
-                        <strong style=""color: var(--cyan);"">{c.EntityType}/{c.EntityName}</strong>
-                        <span style=""color: {GetRiskColor(c.RiskLevel)}; font-weight: 500;"">{GetRiskIcon(c.RiskLevel)} {c.RiskLevel} Risk</span>
-                    </div>
-                    <div style=""color: var(--muted); font-size: 0.9rem; margin-bottom: 0.5rem;"">{c.RiskReason}</div>
-                    <div style=""display: flex; flex-wrap: wrap; gap: 0.5rem;"">
-                        {string.Join("", c.ModActions.Select(a => $@"<span class=""badge"" style=""background: {GetOperationColor(a.Operation)}22; color: {GetOperationColor(a.Operation)};"">{a.ModName}: {a.Operation}</span>"))}
-                    </div>
-                </div>");
+            var risk = c.RiskLevel switch { "High" => "err", "Medium" => "warn", _ => "ok" };
+            sb.AppendLine($@"<details>
+                <summary><span class=""{risk}"">{c.RiskLevel}</span> {c.EntityType}/{c.EntityName}</summary>
+                <div class=""body"">
+                    <div style='color:var(--dim);margin-bottom:var(--s2);'>{c.RiskReason}</div>
+                    <div>{c.ModActions.Count} mods: {string.Join(", ", c.ModActions.Select(a => $"{a.ModName} ({a.Operation})"))}</div>
+                </div>
+            </details>");
         }
-        
-        sb.AppendLine(@"
-            </div>
-        </details>");
-        
         return sb.ToString();
     }
 
-    private static string GenerateModBehaviorHtml(List<ModBehavior> behaviors)
+    private static string GenerateCombinedModListHtml(List<ModInfo> mods, List<ModBehavior> behaviors)
     {
-        // Filter to only show mods with meaningful analysis
-        var meaningfulBehaviors = behaviors.Where(b => 
-            b.KeyFeatures.Count > 0 || b.Warnings.Count > 0 || !b.OneLiner.Contains("no detectable")).ToList();
-        
-        if (!meaningfulBehaviors.Any())
-        {
-            return @"
-        <div class=""success"" style=""margin-top: 1rem;"">
-            <h3>📝 Behavioral Analysis</h3>
-            <p>No complex mod behaviors detected. All mods appear to be simple XML configurations.</p>
-        </div>";
-        }
-
+        var behaviorLookup = behaviors.ToDictionary(b => b.ModName, b => b, StringComparer.OrdinalIgnoreCase);
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($@"
-        <details open>
-            <summary>📝 What Each Mod Does ({meaningfulBehaviors.Count} mods with detectable behavior)</summary>
-            <div>
-                <p style=""color: var(--muted); margin-bottom: 1rem;"">
-                    Human-readable analysis of what each mod actually does to your game.
-                </p>");
         
-        foreach (var b in meaningfulBehaviors.OrderByDescending(x => x.KeyFeatures.Count + x.Warnings.Count))
+        foreach (var m in mods)
         {
-            var warningBorder = b.Warnings.Count > 0 ? "var(--yellow)" : "var(--primary)";
+            behaviorLookup.TryGetValue(m.Name, out var behavior);
             
-            sb.AppendLine($@"
-                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: var(--card); border-radius: 8px; border-left: 4px solid {warningBorder};"">
-                    <div style=""margin-bottom: 0.5rem;"">
-                        <strong style=""color: var(--primary); font-size: 1.1rem;"">{b.ModName}</strong>
-                    </div>
-                    <div style=""color: var(--text); margin-bottom: 0.75rem; font-style: italic;"">{b.OneLiner}</div>");
+            sb.AppendLine($@"<details>
+                <summary>{m.Name} <span class=""{GetModTypeBadgeClass(m.ModType)}"">{m.ModType}</span> <span class=""{GetHealthClass(m.Health)}"">{GetHealthIcon(m.Health)}</span> {(string.IsNullOrEmpty(m.HealthNote) ? "" : $"<span style='color:var(--dim);'>— {m.HealthNote}</span>")}</summary>
+                <div class=""body"">");
             
-            if (b.KeyFeatures.Count > 0)
+            // ModInfo.xml metadata inline
+            if (behavior?.XmlInfo != null)
             {
-                sb.AppendLine(@"                    <div style=""margin-bottom: 0.75rem;"">
-                        <strong style=""color: var(--green);"">✓ What it does:</strong>
-                        <ul style=""margin: 0.25rem 0 0 1.5rem; color: var(--text);"">");
-                foreach (var feature in b.KeyFeatures.Take(5))
-                {
-                    sb.AppendLine($@"                            <li>{System.Web.HttpUtility.HtmlEncode(feature)}</li>");
-                }
-                if (b.KeyFeatures.Count > 5)
-                {
-                    // Create expandable section for remaining items
-                    var remaining = b.KeyFeatures.Skip(5).ToList();
-                    sb.AppendLine($@"                            <li>
-                                <details style=""display: inline;"">
-                                    <summary style=""color: var(--muted); cursor: pointer;"">...and {remaining.Count} more (click to expand)</summary>
-                                    <ul style=""margin: 0.25rem 0 0 0; list-style: disc;"">");
-                    foreach (var feature in remaining)
-                    {
-                        sb.AppendLine($@"                                        <li>{System.Web.HttpUtility.HtmlEncode(feature)}</li>");
-                    }
-                    sb.AppendLine(@"                                    </ul>
-                                </details>
-                            </li>");
-                }
-                sb.AppendLine(@"                        </ul>
-                    </div>");
-            }
-
-            if (b.SystemsAffected.Count > 0)
-            {
-                sb.AppendLine($@"                    <div style=""margin-bottom: 0.5rem;"">
-                        <strong style=""color: var(--cyan);"">⚙️ Systems affected:</strong>
-                        <span style=""color: var(--muted);"">{string.Join(", ", b.SystemsAffected)}</span>
-                    </div>");
-            }
-
-            if (b.Warnings.Count > 0)
-            {
-                sb.AppendLine(@"                    <div style=""margin-top: 0.75rem; padding: 0.5rem; background: rgba(251, 191, 36, 0.1); border-radius: 4px;"">");
-                foreach (var warning in b.Warnings)
-                {
-                    sb.AppendLine($@"                        <div style=""color: var(--yellow);"">{warning}</div>");
-                }
-                sb.AppendLine(@"                    </div>");
-            }
-
-            // ModInfo.xml collapsible section
-            if (b.XmlInfo != null)
-            {
-                var info = b.XmlInfo;
-                sb.AppendLine(@"                    <details style=""margin-top: 0.75rem;"">
-                        <summary style=""cursor: pointer; color: var(--muted); font-size: 0.9rem;"">📄 Mod Information (from ModInfo.xml)</summary>
-                        <div style=""margin-top: 0.5rem; padding: 0.75rem; background: var(--bg); border-radius: 4px; font-size: 0.9rem;"">");
-                
-                if (!string.IsNullOrEmpty(info.DisplayName))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Name:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.DisplayName)}</span></div>");
-                
+                var info = behavior.XmlInfo;
+                var meta = new List<string>();
+                if (!string.IsNullOrEmpty(info.Author)) meta.Add($"by <b>{System.Web.HttpUtility.HtmlEncode(info.Author)}</b>");
+                if (!string.IsNullOrEmpty(info.Version)) meta.Add($"v{System.Web.HttpUtility.HtmlEncode(info.Version)}");
+                if (!string.IsNullOrEmpty(info.Website)) meta.Add($"<a href='{System.Web.HttpUtility.HtmlEncode(info.Website)}' target='_blank'>{System.Web.HttpUtility.HtmlEncode(info.Website)}</a>");
+                if (meta.Count > 0)
+                    sb.AppendLine($@"<div style='color:var(--dim);margin-bottom:var(--s2);'>{string.Join(" • ", meta)}</div>");
                 if (!string.IsNullOrEmpty(info.Description))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Description:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.Description)}</span></div>");
-                
-                if (!string.IsNullOrEmpty(info.Author))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Author:</strong> <span style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Author)}</span></div>");
-                
-                if (!string.IsNullOrEmpty(info.Version))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Version:</strong> <span style=""color: var(--green);"">{System.Web.HttpUtility.HtmlEncode(info.Version)}</span></div>");
-                
-                if (!string.IsNullOrEmpty(info.Website))
-                    sb.AppendLine($@"                            <div><strong style=""color: var(--muted);"">Website:</strong> <a href=""{System.Web.HttpUtility.HtmlEncode(info.Website)}"" target=""_blank"" style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Website)}</a></div>");
-                
-                sb.AppendLine(@"                        </div>
-                    </details>");
+                    sb.AppendLine($@"<div style='color:var(--muted);font-style:italic;margin-bottom:var(--s3);'>{System.Web.HttpUtility.HtmlEncode(info.Description)}</div>");
             }
             
-            sb.AppendLine(@"                </div>");
+            // One-liner
+            if (behavior != null && !string.IsNullOrEmpty(behavior.OneLiner) && !behavior.OneLiner.Contains("no detectable"))
+                sb.AppendLine($@"<div style='margin-bottom:var(--s2);'>{behavior.OneLiner}</div>");
+            
+            // Features as inline list
+            if (behavior?.KeyFeatures.Count > 0)
+            {
+                sb.AppendLine($@"<div style='margin-bottom:var(--s2);'><b style='color:var(--dim);'>Features:</b> ");
+                var features = behavior.KeyFeatures.Take(5).Select(f => System.Web.HttpUtility.HtmlEncode(f));
+                sb.AppendLine(string.Join(" • ", features));
+                if (behavior.KeyFeatures.Count > 5)
+                    sb.AppendLine($@" <span style='color:var(--dim);'>+{behavior.KeyFeatures.Count - 5} more</span>");
+                sb.AppendLine("</div>");
+            }
+            
+            // Systems
+            if (behavior?.SystemsAffected.Count > 0)
+                sb.AppendLine($@"<div style='color:var(--dim);'><b>Systems:</b> {string.Join(", ", behavior.SystemsAffected)}</div>");
+            
+            // Warnings
+            if (behavior?.Warnings.Count > 0)
+                sb.AppendLine($@"<div class='warn' style='margin-top:var(--s2);'>⚠ {string.Join(" • ", behavior.Warnings)}</div>");
+            
+            // No info fallback
+            if (behavior == null && behavior?.XmlInfo == null)
+                sb.AppendLine($@"<span style='color:var(--dim);'>No analysis data.</span>");
+            
+            sb.AppendLine(@"</div></details>");
         }
-        
-        sb.AppendLine(@"
-            </div>
-        </details>");
         
         return sb.ToString();
     }

@@ -1,0 +1,917 @@
+/*
+ * COMPACT TECHNICAL REPORT STYLESHEET
+ * ====================================
+ * Design Philosophy: Information density over decoration
+ * Inspired by: VS Code, GitHub Issues, Grafana dashboards
+ * 
+ * Key Principles:
+ * 1. Tight spacing without cramping
+ * 2. Typography hierarchy via weight/color, not size
+ * 3. Borders only where functionally necessary
+ * 4. Colorblind-safe palette (blue/orange/purple distinctions)
+ * 5. Dark-friendly with reduced eye strain
+ */
+
+/* ============================================
+   CSS CUSTOM PROPERTIES (Design Tokens)
+   ============================================ */
+:root {
+  /* 
+   * COLOR PALETTE - Muted, colorblind-safe
+   * Using blue/orange/purple for status (avoids red/green confusion)
+   * Low saturation for reduced eye strain
+   */
+  --bg-primary: #1e1e1e;        /* VS Code dark background */
+  --bg-secondary: #252526;      /* Slightly lifted panels */
+  --bg-tertiary: #2d2d30;       /* Hover states, subtle emphasis */
+  --bg-highlight: #37373d;      /* Active/selected states */
+  
+  --text-primary: #cccccc;      /* Main body text - not pure white */
+  --text-secondary: #9d9d9d;    /* Labels, metadata, secondary info */
+  --text-muted: #6d6d6d;        /* Disabled, hints */
+  --text-heading: #e0e0e0;      /* Headings - slightly brighter */
+  
+  /* Status colors - colorblind safe (blue/orange/purple) */
+  --status-info: #3794ff;       /* Informational - blue */
+  --status-success: #4ec9b0;    /* Success - teal (distinguishable from green) */
+  --status-warning: #cca700;    /* Warning - amber/gold */
+  --status-error: #f14c4c;      /* Error - red (paired with icon, not alone) */
+  --status-neutral: #858585;    /* Neutral/unknown */
+  
+  /* Accent colors for charts/categories */
+  --accent-1: #569cd6;          /* Blue */
+  --accent-2: #ce9178;          /* Orange/salmon */
+  --accent-3: #b5cea8;          /* Muted green */
+  --accent-4: #c586c0;          /* Purple */
+  --accent-5: #9cdcfe;          /* Light blue */
+  --accent-6: #dcdcaa;          /* Yellow */
+  
+  --border-subtle: #3c3c3c;     /* Subtle dividers */
+  --border-default: #4d4d4d;    /* Standard borders */
+  --border-strong: #6d6d6d;     /* Emphasized borders */
+  
+  /* 
+   * TYPOGRAPHY SCALE - Compact
+   * Base: 13px (VS Code default)
+   * Scale: ~1.15 ratio (tighter than typical 1.25)
+   */
+  --font-size-xs: 0.6875rem;    /* 11px - tiny labels, badges */
+  --font-size-sm: 0.8125rem;    /* 13px - base/body */
+  --font-size-md: 0.875rem;     /* 14px - emphasized body */
+  --font-size-lg: 1rem;         /* 16px - h3, section headers */
+  --font-size-xl: 1.125rem;     /* 18px - h2, major sections */
+  --font-size-xxl: 1.25rem;     /* 20px - h1, page title only */
+  
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* 
+   * SPACING SCALE - Tight
+   * Based on 4px grid for precision
+   */
+  --space-1: 0.125rem;          /* 2px - micro adjustments */
+  --space-2: 0.25rem;           /* 4px - inline spacing */
+  --space-3: 0.5rem;            /* 8px - tight padding */
+  --space-4: 0.75rem;           /* 12px - standard padding */
+  --space-5: 1rem;              /* 16px - section gaps */
+  --space-6: 1.5rem;            /* 24px - major section breaks */
+  
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  
+  /* Line heights - tighter for density */
+  --lh-tight: 1.2;
+  --lh-normal: 1.4;
+  --lh-relaxed: 1.5;
+}
+
+/* Light theme alternative */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #f5f5f5;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e8e8e8;
+    --bg-highlight: #e0e0e0;
+    
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-muted: #999999;
+    --text-heading: #1a1a1a;
+    
+    --border-subtle: #e0e0e0;
+    --border-default: #cccccc;
+    --border-strong: #999999;
+  }
+}
+
+/* ============================================
+   BASE RESET & DEFAULTS
+   ============================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;  /* Base for rem calculations */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* ============================================
+   TYPOGRAPHY - Compact Hierarchy
+   ============================================ 
+   Philosophy: Differentiate via weight and color,
+   minimize size differences to preserve density
+*/
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  color: var(--text-heading);
+  line-height: var(--lh-tight);
+  margin: 0;
+}
+
+/* Page title - only element > 1rem */
+h1 {
+  font-size: var(--font-size-xxl);
+  font-weight: 400;  /* Light weight at large size */
+  letter-spacing: -0.01em;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-4);
+}
+
+/* Major section headers */
+h2 {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Subsection headers */
+h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+/* Minor headers - same size as body, differentiated by weight */
+h4 {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+h5, h6 {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+p {
+  margin-bottom: var(--space-3);
+}
+
+/* Reduce paragraph spacing in dense contexts */
+.dense p {
+  margin-bottom: var(--space-2);
+}
+
+/* Labels and metadata */
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* Code and technical text */
+code, pre, .mono {
+  font-family: var(--font-mono);
+  font-size: 0.9em;  /* Slightly smaller than surrounding text */
+}
+
+code {
+  background: var(--bg-tertiary);
+  padding: 0.1em 0.3em;
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+/* ============================================
+   LAYOUT - Maximum Density
+   ============================================ */
+
+/* Main container - minimal margins */
+.report-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+/* Full-width for maximum density */
+.report-container.full-width {
+  max-width: none;
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Two-column layout */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+/* Three-column for stats */
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+/* Four-column for dense stats */
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+
+/* Auto-fit responsive grid */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+/* Sidebar + main layout */
+.layout-sidebar {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--space-4);
+}
+
+/* Stack at smaller screens */
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .layout-sidebar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .grid-2, .grid-3, .grid-4, .grid-auto {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   SECTIONS - Minimal Chrome
+   ============================================
+   No cards/boxes by default - use borders sparingly
+*/
+
+.section {
+  margin-bottom: var(--space-5);
+}
+
+/* Bordered section - only when grouping is essential */
+.section-bordered {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* Subtle background lift */
+.section-raised {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* Divider between sections */
+.section + .section {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ============================================
+   STAT BLOCKS - Ultra Compact
+   ============================================
+   Design: Value first, label below, minimal chrome
+*/
+
+/* Inline stat - for horizontal lists */
+.stat-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-right: var(--space-4);
+}
+
+.stat-inline .value {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-heading);
+}
+
+.stat-inline .label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* Stat block - vertical layout */
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-block .value {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  line-height: 1;
+  color: var(--text-heading);
+}
+
+.stat-block .label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stat-block .delta {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+}
+
+/* Mini stat - extremely compact */
+.stat-mini {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stat-mini:last-child {
+  border-bottom: none;
+}
+
+.stat-mini .label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.stat-mini .value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* Stat row - horizontal key/value pairs */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ============================================
+   TABLES - Maximum Density
+   ============================================
+   Design: Minimal borders, tight cells, alternating rows
+*/
+
+.table-container {
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+th, td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+th {
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Align numbers right */
+td.num, th.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* Alternating rows - subtle */
+tbody tr:nth-child(even) {
+  background: var(--bg-secondary);
+}
+
+/* Hover state */
+tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Compact table variant */
+table.compact th,
+table.compact td {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Dense table - no alternating, minimal padding */
+table.dense {
+  font-size: var(--font-size-xs);
+}
+
+table.dense th,
+table.dense td {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Borderless table */
+table.borderless td {
+  border-bottom: none;
+}
+
+table.borderless tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+/* ============================================
+   COLLAPSIBLE SECTIONS - Minimal
+   ============================================ */
+
+details {
+  margin: var(--space-2) 0;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: var(--space-2) 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-heading);
+  user-select: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Custom arrow indicator */
+summary::before {
+  content: '▸';
+  font-size: 0.75em;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+summary:hover {
+  color: var(--status-info);
+}
+
+/* Collapsible content */
+details > *:not(summary) {
+  padding-left: var(--space-4);
+}
+
+/* Nested collapsibles */
+details details {
+  margin-left: var(--space-3);
+}
+
+/* Collapsible with count badge */
+summary .count {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ============================================
+   BADGES & TAGS
+   ============================================ */
+
+.badge {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+/* Status badges - colorblind safe */
+.badge-info { background: rgba(55, 148, 255, 0.2); color: var(--status-info); }
+.badge-success { background: rgba(78, 201, 176, 0.2); color: var(--status-success); }
+.badge-warning { background: rgba(204, 167, 0, 0.2); color: var(--status-warning); }
+.badge-error { background: rgba(241, 76, 76, 0.2); color: var(--status-error); }
+
+/* Tags - for categories/types */
+.tag {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  padding: 0 0.4em;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  margin-right: var(--space-1);
+}
+
+/* ============================================
+   LISTS - Compact
+   ============================================ */
+
+ul, ol {
+  padding-left: var(--space-4);
+  margin: var(--space-2) 0;
+}
+
+li {
+  margin-bottom: var(--space-1);
+}
+
+/* Dense list - no bullets */
+.list-dense {
+  list-style: none;
+  padding-left: 0;
+}
+
+.list-dense li {
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.list-dense li:last-child {
+  border-bottom: none;
+}
+
+/* Definition list - for key/value pairs */
+dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+dt {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+dd {
+  margin: 0;
+}
+
+/* Compact definition list */
+dl.compact {
+  font-size: var(--font-size-xs);
+  gap: var(--space-1) var(--space-2);
+}
+
+/* ============================================
+   NAVIGATION & TABS
+   ============================================ */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: var(--space-4);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tab.active {
+  color: var(--text-heading);
+  border-bottom-color: var(--status-info);
+}
+
+/* Sidebar navigation */
+.nav-sidebar {
+  font-size: var(--font-size-sm);
+}
+
+.nav-sidebar a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.nav-sidebar a:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.nav-sidebar a.active {
+  background: var(--bg-highlight);
+  color: var(--text-heading);
+}
+
+/* ============================================
+   PROGRESS & METERS
+   ============================================ */
+
+/* Inline progress bar */
+.progress {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--status-info);
+  transition: width 0.3s ease;
+}
+
+/* Mini inline progress */
+.progress-mini {
+  display: inline-block;
+  width: 60px;
+  height: 3px;
+  vertical-align: middle;
+  margin-left: var(--space-2);
+}
+
+/* Percentage with bar */
+.stat-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stat-progress .value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  min-width: 3em;
+  text-align: right;
+}
+
+.stat-progress .progress {
+  flex: 1;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Text utilities */
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.text-mono { font-family: var(--font-mono); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-xs { font-size: var(--font-size-xs); }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.text-nowrap { white-space: nowrap; }
+
+/* Spacing utilities */
+.mt-0 { margin-top: 0; }
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: var(--space-2); }
+.mb-2 { margin-bottom: var(--space-3); }
+.mb-3 { margin-bottom: var(--space-4); }
+.mb-4 { margin-bottom: var(--space-5); }
+
+.pt-0 { padding-top: 0; }
+.pb-0 { padding-bottom: 0; }
+
+/* Flex utilities */
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: var(--space-2); }
+.gap-2 { gap: var(--space-3); }
+.gap-3 { gap: var(--space-4); }
+
+/* Display utilities */
+.hidden { display: none; }
+.block { display: block; }
+.inline { display: inline; }
+.inline-block { display: inline-block; }
+
+/* Truncate long text */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   SPECIFIC COMPONENTS FOR MOD REPORTS
+   ============================================ */
+
+/* Mod list item - compact row */
+.mod-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.mod-item:hover {
+  background: var(--bg-secondary);
+  margin: 0 calc(-1 * var(--space-2));
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.mod-name {
+  font-weight: 500;
+  color: var(--text-heading);
+}
+
+.mod-version {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.mod-status {
+  font-size: var(--font-size-xs);
+}
+
+/* Dependency tree - compact nesting */
+.dep-tree {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: var(--lh-relaxed);
+}
+
+.dep-tree ul {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+  margin-left: var(--space-2);
+}
+
+/* Issue/warning list */
+.issue-item {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.issue-icon {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+}
+
+.issue-text {
+  flex: 1;
+}
+
+.issue-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Summary header - compact KPIs */
+.summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.summary-bar .stat-inline {
+  margin-right: 0;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  :root {
+    --bg-primary: white;
+    --bg-secondary: white;
+    --text-primary: black;
+    --text-secondary: #444;
+    --border-subtle: #ddd;
+  }
+  
+  body {
+    font-size: 10pt;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  details {
+    display: block;
+  }
+  
+  details > * {
+    display: block;
+  }
+}
+
+/* ============================================
+   SCROLLBAR STYLING (Webkit)
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
