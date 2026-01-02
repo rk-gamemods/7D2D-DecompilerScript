@@ -3791,62 +3791,86 @@ public class Program
     private static void GenerateHtmlReport(string path, ReportData data)
     {
         var html = $@"<!DOCTYPE html>
-<html lang=""en"">
+<html lang=""en"" data-theme=""carbon"">
 <head>
     <meta charset=""UTF-8"">
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
     <title>7D2D Mod Ecosystem Report</title>
     <style>
-        :root {{ --bg: #1a1a2e; --card: #16213e; --accent: #0f3460; --text: #e8e8e8; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; --purple: #a78bfa; }}
+        /* Theme: Original Blue (legacy) */
+        [data-theme=""blue""] {{ --bg: #1a1a2e; --card: #16213e; --accent: #0f3460; --text: #e8e8e8; --muted: #888; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --cyan: #22d3ee; --purple: #a78bfa; --primary: #22d3ee; --hover: rgba(15, 52, 96, 0.3); }}
+        
+        /* Theme: Obsidian Slate - Warm amber accent, IDE-inspired */
+        [data-theme=""obsidian""] {{ --bg: #121214; --card: #1c1c1f; --accent: #2a2a2e; --text: #e4e4e7; --muted: #71717a; --green: #34d399; --yellow: #f59e0b; --red: #f87171; --cyan: #a3a3a3; --purple: #a78bfa; --primary: #f59e0b; --hover: rgba(245, 158, 11, 0.08); }}
+        
+        /* Theme: Carbon Neutral - GitHub Dark Dimmed inspired */
+        [data-theme=""carbon""] {{ --bg: #161b22; --card: #1f2428; --accent: #30363d; --text: #c9d1d9; --muted: #8b949e; --green: #3fb950; --yellow: #d29922; --red: #f85149; --cyan: #58a6ff; --purple: #bc8cff; --primary: #8b949e; --hover: rgba(88, 166, 255, 0.06); }}
+        
+        /* Theme: Graphite Moss - Sublime/Monokai inspired */
+        [data-theme=""graphite""] {{ --bg: #1a1a1a; --card: #242424; --accent: #333333; --text: #d4d4d4; --muted: #5c6370; --green: #98c379; --yellow: #e5c07b; --red: #e06c75; --cyan: #56b6c2; --purple: #c678dd; --primary: #98c379; --hover: rgba(152, 195, 121, 0.08); }}
+        
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }}
         .container {{ max-width: 1200px; margin: 0 auto; }}
-        h1 {{ color: var(--cyan); margin-bottom: 0.5rem; font-size: 2.5rem; }}
-        h2 {{ color: var(--cyan); margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }}
+        h1 {{ color: var(--primary); margin-bottom: 0.5rem; font-size: 2.5rem; }}
+        h2 {{ color: var(--primary); margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }}
         h3 {{ color: var(--text); margin: 1rem 0 0.5rem; }}
-        .subtitle {{ color: #888; margin-bottom: 2rem; }}
+        .subtitle {{ color: var(--muted); margin-bottom: 2rem; }}
         .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }}
         .card {{ background: var(--card); border-radius: 8px; padding: 1.5rem; border: 1px solid var(--accent); }}
-        .stat-value {{ font-size: 2rem; font-weight: bold; color: var(--cyan); }}
-        .stat-label {{ color: #888; font-size: 0.9rem; }}
+        .stat-value {{ font-size: 2rem; font-weight: bold; color: var(--primary); }}
+        .stat-label {{ color: var(--muted); font-size: 0.9rem; }}
         table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
         th, td {{ padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--accent); }}
-        th {{ background: var(--accent); color: var(--cyan); }}
-        tr:hover {{ background: rgba(15, 52, 96, 0.3); }}
-        .bar {{ height: 20px; background: var(--cyan); border-radius: 4px; }}
+        th {{ background: var(--accent); color: var(--text); font-weight: 600; }}
+        tr:hover {{ background: var(--hover); }}
+        .bar {{ height: 20px; background: var(--primary); border-radius: 4px; }}
         .status-ok {{ color: var(--green); }}
         .status-removes {{ color: var(--yellow); }}
         .status-conflict {{ color: var(--red); }}
         .status-csharp, .status-c\# {{ color: var(--cyan); }}
-        .status-passive {{ color: #666; }}
+        .status-passive {{ color: var(--muted); }}
         .danger {{ background: rgba(248, 113, 113, 0.1); border: 1px solid var(--red); border-radius: 8px; padding: 1rem; margin: 1rem 0; }}
         .danger h3 {{ color: var(--red); }}
         .success {{ background: rgba(74, 222, 128, 0.1); border: 1px solid var(--green); border-radius: 8px; padding: 1rem; }}
         .fun-fact {{ background: var(--accent); padding: 0.5rem 1rem; border-radius: 4px; margin: 0.5rem 0; }}
-        footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--accent); color: #666; text-align: center; }}
+        footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--accent); color: var(--muted); text-align: center; }}
         /* Collapsible sections */
         details {{ margin: 1rem 0; }}
         summary {{ cursor: pointer; padding: 0.75rem 1rem; background: var(--card); border: 1px solid var(--accent); border-radius: 8px; font-weight: 500; }}
         summary:hover {{ background: var(--accent); }}
-        summary::marker {{ color: var(--cyan); }}
+        summary::marker {{ color: var(--primary); }}
         details[open] summary {{ border-radius: 8px 8px 0 0; border-bottom: none; }}
-        details > div {{ border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; padding: 1rem; background: rgba(22, 33, 62, 0.5); }}
+        details > div {{ border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; padding: 1rem; background: var(--card); }}
         .badge {{ display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0; font-weight: 500; }}
         .badge-purple {{ background: rgba(167, 139, 250, 0.2); color: var(--purple); }}
-        .badge-cyan {{ background: rgba(34, 211, 238, 0.2); color: var(--cyan); }}
+        .badge-cyan {{ background: rgba(88, 166, 255, 0.15); color: var(--cyan); }}
         .badge-green {{ background: rgba(74, 222, 128, 0.2); color: var(--green); }}
         /* Mod type badges */
         .badge-xml {{ background: rgba(251, 191, 36, 0.2); color: var(--yellow); }}
         .badge-csharp-code {{ background: rgba(167, 139, 250, 0.2); color: var(--purple); }}
         .badge-hybrid {{ background: rgba(34, 211, 238, 0.2); color: var(--cyan); }}
-        .badge-assets {{ background: rgba(100, 100, 100, 0.2); color: #888; }}
+        .badge-assets {{ background: rgba(100, 100, 100, 0.2); color: var(--muted); }}
         /* Health indicators */
         .health-healthy {{ color: var(--green); }}
         .health-review {{ color: var(--yellow); }}
         .health-broken {{ color: var(--red); }}
+        /* Theme selector */
+        .theme-selector {{ position: fixed; top: 1rem; right: 1rem; background: var(--card); border: 1px solid var(--accent); border-radius: 6px; padding: 0.5rem; z-index: 1000; }}
+        .theme-selector label {{ color: var(--muted); font-size: 0.8rem; display: block; margin-bottom: 0.25rem; }}
+        .theme-selector select {{ background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 4px; padding: 0.25rem 0.5rem; cursor: pointer; }}
     </style>
 </head>
 <body>
+    <div class=""theme-selector"">
+        <label>Theme</label>
+        <select onchange=""document.documentElement.dataset.theme=this.value"">
+            <option value=""carbon"">Carbon Neutral</option>
+            <option value=""graphite"">Graphite Moss</option>
+            <option value=""obsidian"">Obsidian Slate</option>
+            <option value=""blue"">Original Blue</option>
+        </select>
+    </div>
     <div class=""container"">
         <h1>🎮 7D2D Mod Ecosystem Report</h1>
         <p class=""subtitle"">Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>
@@ -3974,7 +3998,7 @@ public class Program
         <details open>
             <summary>📦 Mod Overview ({data.ModSummary.Count} mods installed)</summary>
             <div>
-                <p style=""color: #888; margin-bottom: 1rem;"">
+                <p style=""color: var(--muted); margin-bottom: 1rem;"">
                     <strong>Type:</strong> How the mod works &nbsp;|&nbsp; 
                     <strong>Health:</strong> ✅ = Safe to use, ⚠️ = Check notes, ❌ = Has problems
                 </p>
@@ -3985,7 +4009,7 @@ public class Program
                         <td>{m.Name}</td>
                         <td><span class=""badge badge-{SanitizeCssClass(m.ModType)}"">{m.ModType}</span></td>
                         <td class=""health-{m.Health.ToLower()}"">{GetHealthIcon(m.Health)} {m.Health}</td>
-                        <td style=""color: #aaa; font-size: 0.9rem;"">{m.HealthNote}</td>
+                        <td style=""color: var(--muted); font-size: 0.9rem;"">{m.HealthNote}</td>
                     </tr>"))}
                 </table>
             </div>
@@ -4064,7 +4088,7 @@ public class Program
         <details{(hasRisks ? " open" : "")}>
             <summary>⚡ Shared Entities ({entities.Count} entities touched by multiple mods)</summary>
             <div>
-                <p style=""color: #888; margin-bottom: 1rem;"">
+                <p style=""color: var(--muted); margin-bottom: 1rem;"">
                     <strong>Risk Levels:</strong> 
                     <span style=""color: var(--red);"">🔴 High</span> = Likely conflict &nbsp;|&nbsp;
                     <span style=""color: var(--yellow);"">🟡 Medium</span> = May conflict &nbsp;|&nbsp;
@@ -4074,12 +4098,12 @@ public class Program
         foreach (var c in entities)
         {
             sb.AppendLine($@"
-                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: rgba(15, 52, 96, 0.3); border-radius: 8px; border-left: 4px solid {GetRiskColor(c.RiskLevel)};"">
+                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: var(--card); border-radius: 8px; border-left: 4px solid {GetRiskColor(c.RiskLevel)};"">
                     <div style=""display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;"">
                         <strong style=""color: var(--cyan);"">{c.EntityType}/{c.EntityName}</strong>
                         <span style=""color: {GetRiskColor(c.RiskLevel)}; font-weight: 500;"">{GetRiskIcon(c.RiskLevel)} {c.RiskLevel} Risk</span>
                     </div>
-                    <div style=""color: #aaa; font-size: 0.9rem; margin-bottom: 0.5rem;"">{c.RiskReason}</div>
+                    <div style=""color: var(--muted); font-size: 0.9rem; margin-bottom: 0.5rem;"">{c.RiskReason}</div>
                     <div style=""display: flex; flex-wrap: wrap; gap: 0.5rem;"">
                         {string.Join("", c.ModActions.Select(a => $@"<span class=""badge"" style=""background: {GetOperationColor(a.Operation)}22; color: {GetOperationColor(a.Operation)};"">{a.ModName}: {a.Operation}</span>"))}
                     </div>
@@ -4113,18 +4137,18 @@ public class Program
         <details open>
             <summary>📝 What Each Mod Does ({meaningfulBehaviors.Count} mods with detectable behavior)</summary>
             <div>
-                <p style=""color: #888; margin-bottom: 1rem;"">
+                <p style=""color: var(--muted); margin-bottom: 1rem;"">
                     Human-readable analysis of what each mod actually does to your game.
                 </p>");
         
         foreach (var b in meaningfulBehaviors.OrderByDescending(x => x.KeyFeatures.Count + x.Warnings.Count))
         {
-            var warningBorder = b.Warnings.Count > 0 ? "var(--yellow)" : "var(--cyan)";
+            var warningBorder = b.Warnings.Count > 0 ? "var(--yellow)" : "var(--primary)";
             
             sb.AppendLine($@"
-                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: rgba(15, 52, 96, 0.3); border-radius: 8px; border-left: 4px solid {warningBorder};"">
+                <div style=""margin-bottom: 1.5rem; padding: 1rem; background: var(--card); border-radius: 8px; border-left: 4px solid {warningBorder};"">
                     <div style=""margin-bottom: 0.5rem;"">
-                        <strong style=""color: var(--cyan); font-size: 1.1rem;"">{b.ModName}</strong>
+                        <strong style=""color: var(--primary); font-size: 1.1rem;"">{b.ModName}</strong>
                     </div>
                     <div style=""color: var(--text); margin-bottom: 0.75rem; font-style: italic;"">{b.OneLiner}</div>");
             
@@ -4132,7 +4156,7 @@ public class Program
             {
                 sb.AppendLine(@"                    <div style=""margin-bottom: 0.75rem;"">
                         <strong style=""color: var(--green);"">✓ What it does:</strong>
-                        <ul style=""margin: 0.25rem 0 0 1.5rem; color: #ccc;"">");
+                        <ul style=""margin: 0.25rem 0 0 1.5rem; color: var(--text);"">");
                 foreach (var feature in b.KeyFeatures.Take(5))
                 {
                     sb.AppendLine($@"                            <li>{System.Web.HttpUtility.HtmlEncode(feature)}</li>");
@@ -4143,7 +4167,7 @@ public class Program
                     var remaining = b.KeyFeatures.Skip(5).ToList();
                     sb.AppendLine($@"                            <li>
                                 <details style=""display: inline;"">
-                                    <summary style=""color: #888; cursor: pointer;"">...and {remaining.Count} more (click to expand)</summary>
+                                    <summary style=""color: var(--muted); cursor: pointer;"">...and {remaining.Count} more (click to expand)</summary>
                                     <ul style=""margin: 0.25rem 0 0 0; list-style: disc;"">");
                     foreach (var feature in remaining)
                     {
@@ -4161,7 +4185,7 @@ public class Program
             {
                 sb.AppendLine($@"                    <div style=""margin-bottom: 0.5rem;"">
                         <strong style=""color: var(--cyan);"">⚙️ Systems affected:</strong>
-                        <span style=""color: #aaa;"">{string.Join(", ", b.SystemsAffected)}</span>
+                        <span style=""color: var(--muted);"">{string.Join(", ", b.SystemsAffected)}</span>
                     </div>");
             }
 
@@ -4180,23 +4204,23 @@ public class Program
             {
                 var info = b.XmlInfo;
                 sb.AppendLine(@"                    <details style=""margin-top: 0.75rem;"">
-                        <summary style=""cursor: pointer; color: #888; font-size: 0.9rem;"">📄 Mod Information (from ModInfo.xml)</summary>
-                        <div style=""margin-top: 0.5rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.2); border-radius: 4px; font-size: 0.9rem;"">");
+                        <summary style=""cursor: pointer; color: var(--muted); font-size: 0.9rem;"">📄 Mod Information (from ModInfo.xml)</summary>
+                        <div style=""margin-top: 0.5rem; padding: 0.75rem; background: var(--bg); border-radius: 4px; font-size: 0.9rem;"">");
                 
                 if (!string.IsNullOrEmpty(info.DisplayName))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Name:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.DisplayName)}</span></div>");
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Name:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.DisplayName)}</span></div>");
                 
                 if (!string.IsNullOrEmpty(info.Description))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Description:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.Description)}</span></div>");
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Description:</strong> <span style=""color: var(--text);"">{System.Web.HttpUtility.HtmlEncode(info.Description)}</span></div>");
                 
                 if (!string.IsNullOrEmpty(info.Author))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Author:</strong> <span style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Author)}</span></div>");
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Author:</strong> <span style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Author)}</span></div>");
                 
                 if (!string.IsNullOrEmpty(info.Version))
-                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: #888;"">Version:</strong> <span style=""color: var(--green);"">{System.Web.HttpUtility.HtmlEncode(info.Version)}</span></div>");
+                    sb.AppendLine($@"                            <div style=""margin-bottom: 0.25rem;""><strong style=""color: var(--muted);"">Version:</strong> <span style=""color: var(--green);"">{System.Web.HttpUtility.HtmlEncode(info.Version)}</span></div>");
                 
                 if (!string.IsNullOrEmpty(info.Website))
-                    sb.AppendLine($@"                            <div><strong style=""color: #888;"">Website:</strong> <a href=""{System.Web.HttpUtility.HtmlEncode(info.Website)}"" target=""_blank"" style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Website)}</a></div>");
+                    sb.AppendLine($@"                            <div><strong style=""color: var(--muted);"">Website:</strong> <a href=""{System.Web.HttpUtility.HtmlEncode(info.Website)}"" target=""_blank"" style=""color: var(--cyan);"">{System.Web.HttpUtility.HtmlEncode(info.Website)}</a></div>");
                 
                 sb.AppendLine(@"                        </div>
                     </details>");
