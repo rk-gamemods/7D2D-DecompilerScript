@@ -513,7 +513,37 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 -- Store version info, build timestamps, etc.
 -- Example entries:
--- ('schema_version', '2')  -- Updated for event tracking
+-- ('schema_version', '3')  -- Updated for consolidation
 -- ('game_version', 'V1.1 b14')
 -- ('build_timestamp', '2024-12-31T10:30:00')
 -- ('source_path', 'C:\...\7D2DCodebase')
+
+-- ============================================================================
+-- CACHING: Query result cache for performance
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS query_cache (
+    query_hash TEXT PRIMARY KEY,
+    query_text TEXT,
+    result_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    hit_count INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_cache_hash ON query_cache(query_hash);
+
+-- ============================================================================
+-- AI SUMMARIES: LLM-generated method summaries
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS method_summaries (
+    method_id INTEGER PRIMARY KEY,
+    summary TEXT,                       -- Plain English description
+    complexity TEXT,                    -- 'simple', 'moderate', 'complex'
+    side_effects TEXT,                  -- Description of side effects
+    thread_safety TEXT,                 -- Thread safety notes
+    generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (method_id) REFERENCES methods(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_method_summaries_method ON method_summaries(method_id);
