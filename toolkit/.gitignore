@@ -54,3 +54,4 @@ htmlcov/
 
 *.db
 *.db-*
+*.db.bak

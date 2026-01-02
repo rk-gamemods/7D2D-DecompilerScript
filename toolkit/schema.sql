@@ -109,27 +109,89 @@ CREATE INDEX IF NOT EXISTS idx_external_assembly ON external_calls(target_assemb
 CREATE INDEX IF NOT EXISTS idx_external_target ON external_calls(target_type, target_method);
 
 -- ============================================================================
--- GAME XML: Property Definitions from Game Data Files
+-- ECOSYSTEM: XML Definitions and Entity Tracking
 -- ============================================================================
 
--- All properties defined in game XML files (items.xml, blocks.xml, etc.)
--- This catalogs what the game expects/reads from XML configuration
+-- Game XML definitions (items, blocks, buffs, etc.)
 CREATE TABLE IF NOT EXISTS xml_definitions (
     id INTEGER PRIMARY KEY,
-    file_name TEXT NOT NULL,            -- 'items.xml', 'blocks.xml', 'recipes.xml', etc.
-    element_type TEXT NOT NULL,         -- 'item', 'block', 'recipe', 'progression', etc.
-    element_name TEXT,                  -- 'gunPistol', 'frameShapes', etc. (name attribute)
-    element_xpath TEXT NOT NULL,        -- Full xpath: '/items/item[@name="gunPistol"]'
-    property_name TEXT,                 -- Property name if this is a property element
-    property_value TEXT,                -- The value (for reference, may change with mods)
-    property_class TEXT,                -- For items: class="Weapon", etc.
-    line_number INTEGER                 -- Line in original XML file
+    definition_type TEXT NOT NULL,      -- 'item', 'block', 'buff', 'recipe', etc.
+    name TEXT NOT NULL,                 -- Entity name from XML
+    file_path TEXT NOT NULL,            -- Source XML file path
+    line_number INTEGER,                -- Line in source file
+    extends TEXT                        -- Parent definition if using Extends
 );
 
-CREATE INDEX IF NOT EXISTS idx_xmldef_file ON xml_definitions(file_name);
-CREATE INDEX IF NOT EXISTS idx_xmldef_element ON xml_definitions(element_type, element_name);
-CREATE INDEX IF NOT EXISTS idx_xmldef_property ON xml_definitions(property_name);
-CREATE INDEX IF NOT EXISTS idx_xmldef_xpath ON xml_definitions(element_xpath);
+CREATE INDEX IF NOT EXISTS idx_xml_def_type_name ON xml_definitions(definition_type, name);
+CREATE INDEX IF NOT EXISTS idx_xml_def_name ON xml_definitions(name);
+
+-- XML properties for each definition
+CREATE TABLE IF NOT EXISTS xml_properties (
+    id INTEGER PRIMARY KEY,
+    definition_id INTEGER,              -- FK to xml_definitions
+    property_name TEXT NOT NULL,
+    property_value TEXT,
+    property_class TEXT,                -- For nested <property class="Action0"> etc.
+    line_number INTEGER,
+    FOREIGN KEY (definition_id) REFERENCES xml_definitions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_xml_props_def ON xml_properties(definition_id);
+CREATE INDEX IF NOT EXISTS idx_xml_props_name ON xml_properties(property_name);
+
+-- XML cross-references between definitions
+CREATE TABLE IF NOT EXISTS xml_references (
+    id INTEGER PRIMARY KEY,
+    source_type TEXT NOT NULL,          -- 'xml' or 'csharp'
+    source_def_id INTEGER,              -- FK to xml_definitions if source_type='xml'
+    source_file TEXT NOT NULL,
+    source_line INTEGER,
+    target_type TEXT NOT NULL,          -- 'item', 'block', 'buff', etc.
+    target_name TEXT NOT NULL,
+    reference_context TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_xml_refs_target ON xml_references(target_type, target_name);
+
+-- Ecosystem entities (unified view of all game entities)
+CREATE TABLE IF NOT EXISTS ecosystem_entities (
+    id INTEGER PRIMARY KEY,
+    entity_type TEXT NOT NULL,          -- 'item', 'block', 'buff', etc.
+    entity_name TEXT NOT NULL,
+    source TEXT NOT NULL,               -- 'vanilla' or mod name
+    status TEXT DEFAULT 'active',       -- 'active', 'modified', 'removed'
+    modified_by TEXT,                   -- Mod that modified this
+    removed_by TEXT,                    -- Mod that removed this
+    depended_on_by TEXT                 -- JSON array of mods that depend on this
+);
+
+CREATE INDEX IF NOT EXISTS idx_ecosystem_type ON ecosystem_entities(entity_type, entity_name);
+
+-- Semantic mappings for entities (AI-generated descriptions)
+CREATE TABLE IF NOT EXISTS semantic_mappings (
+    id INTEGER PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_name TEXT NOT NULL,
+    parent_context TEXT,                -- Parent entity if applicable
+    layman_description TEXT,            -- Plain English description
+    technical_description TEXT,         -- Technical/modding description
+    player_impact TEXT,                 -- How this affects gameplay
+    related_systems TEXT,               -- Related game systems
+    example_usage TEXT,                 -- Example mod usage
+    generated_by TEXT DEFAULT 'llm',
+    confidence REAL DEFAULT 0.8,
+    llm_model TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(entity_type, entity_name, parent_context)
+);
+
+CREATE INDEX IF NOT EXISTS idx_semantic_entity ON semantic_mappings(entity_type, entity_name);
+
+-- Entity type statistics
+CREATE TABLE IF NOT EXISTS xml_stats (
+    definition_type TEXT PRIMARY KEY,
+    count INTEGER
+);
 
 -- ============================================================================
 -- XML PROPERTY ACCESS: Code that reads XML properties
@@ -159,18 +221,45 @@ CREATE INDEX IF NOT EXISTS idx_propaccess_type ON xml_property_access(receiver_t
 
 CREATE TABLE IF NOT EXISTS mods (
     id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,          -- Mod folder name / identifier
-    display_name TEXT,                  -- From ModInfo.xml if available
-    version TEXT,                       -- Mod version
-    author TEXT,                        -- Mod author
-    description TEXT,                   -- Mod description
-    mod_path TEXT,                      -- Full path to mod folder
-    has_harmony INTEGER DEFAULT 0,      -- 1 if mod uses Harmony patches
-    has_xml_changes INTEGER DEFAULT 0,  -- 1 if mod has XML modifications
-    analyzed_at TEXT                    -- ISO timestamp of analysis
+    name TEXT UNIQUE NOT NULL,          -- Mod folder name / identifier
+    has_xml INTEGER DEFAULT 0,          -- 1 if mod has XML modifications
+    has_dll INTEGER DEFAULT 0,          -- 1 if mod has DLL/Harmony
+    xml_operations INTEGER DEFAULT 0,   -- Count of XML operations
+    csharp_dependencies INTEGER DEFAULT 0, -- Count of C# dependencies
+    conflicts INTEGER DEFAULT 0,        -- Detected conflict count
+    cautions INTEGER DEFAULT 0          -- Detected caution count
 );
 
 CREATE INDEX IF NOT EXISTS idx_mods_name ON mods(name);
+
+-- Mod C# dependencies (what game code the mod relies on)
+CREATE TABLE IF NOT EXISTS mod_csharp_deps (
+    id INTEGER PRIMARY KEY,
+    mod_id INTEGER,                     -- FK to mods
+    dependency_type TEXT NOT NULL,      -- 'type', 'method', 'property', etc.
+    dependency_name TEXT NOT NULL,      -- Name of the dependency
+    source_file TEXT,                   -- File in mod where dependency is used
+    line_number INTEGER,
+    pattern TEXT,                       -- Pattern matched to find this
+    FOREIGN KEY (mod_id) REFERENCES mods(id)
+);
+
+-- Mod XML operations (what XML changes the mod makes)
+CREATE TABLE IF NOT EXISTS mod_xml_operations (
+    id INTEGER PRIMARY KEY,
+    mod_id INTEGER,                     -- FK to mods
+    operation TEXT NOT NULL,            -- 'set', 'append', 'remove', etc.
+    xpath TEXT NOT NULL,                -- XPath target
+    target_type TEXT,                   -- 'item', 'block', etc.
+    target_name TEXT,                   -- Target entity name
+    property_name TEXT,                 -- Property being modified
+    new_value TEXT,                     -- New value if applicable
+    element_content TEXT,               -- Full element content if complex
+    file_path TEXT,                     -- Source file in mod
+    line_number INTEGER,
+    impact_status TEXT,                 -- 'safe', 'caution', 'conflict'
+    FOREIGN KEY (mod_id) REFERENCES mods(id)
+);
 
 -- ============================================================================
 -- MOD CODE: Types and methods from mods (same structure as game code)
