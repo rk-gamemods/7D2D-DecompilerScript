@@ -4,13 +4,22 @@ This document provides guidance for AI assistants (like GitHub Copilot) on how t
 
 ## Overview
 
-The toolkit maintains a SQLite database (`callgraph.db`) containing:
+The toolkit maintains a unified SQLite database (`toolkit/callgraph_full.db`) containing:
+
+### Code Analysis
 - **4,725 types** — All classes, structs, interfaces, enums from game code
 - **39,342 methods** — Every method with signature, location, body text
 - **117,757 internal calls** — Call graph edges within game code
 - **47,514 external calls** — Calls to Unity, .NET, and third-party libraries
-- **131,960 XML definitions** — Properties from game config files (items.xml, blocks.xml, etc.)
+
+### Ecosystem Data
+- **15,534 XML definitions** — Items, blocks, buffs, recipes from game XML
+- **65,267 XML properties** — All property values for each definition
+- **20,462 semantic mappings** — AI-generated descriptions for entities
+
+### Mod Analysis
 - **Mod data** — Harmony patches and XML changes from parsed mods
+- **Event tracking** — Event subscriptions and fires
 
 ## Tool Location
 
@@ -24,7 +33,7 @@ cd toolkit/QueryDb
 dotnet run -- "<database-path>" <command> [args]
 ```
 
-Database is typically at: `7D2D-DecompilerScript/callgraph.db`
+**Unified database location:** `toolkit/callgraph_full.db`
 
 ---
 
@@ -192,32 +201,63 @@ Check for:
 
 ## Key Tables (for custom SQL)
 
+### Code Analysis Tables
+
 ```sql
 -- Types (classes, structs, etc.)
 SELECT * FROM types WHERE name LIKE '%Player%';
 
 -- Methods with signatures and locations
-SELECT * FROM methods WHERE name = 'Update' AND type_id IN 
+SELECT * FROM methods WHERE name = 'Update' AND type_id IN
   (SELECT id FROM types WHERE name LIKE '%Controller%');
 
 -- Internal call graph
-SELECT caller.name, callee.name 
+SELECT caller.name, callee.name
 FROM calls c
 JOIN methods caller ON c.caller_id = caller.id
 JOIN methods callee ON c.callee_id = callee.id;
 
 -- External calls (Unity/BCL)
-SELECT target_type, target_method, COUNT(*) 
-FROM external_calls 
-GROUP BY target_type, target_method 
+SELECT target_type, target_method, COUNT(*)
+FROM external_calls
+GROUP BY target_type, target_method
 ORDER BY COUNT(*) DESC;
 
 -- Method bodies (FTS5)
 SELECT * FROM method_bodies WHERE method_bodies MATCH 'GetComponent';
+```
 
--- XML definitions
-SELECT * FROM xml_definitions WHERE element_name = 'gunPistol';
+### Ecosystem Tables (NEW)
 
+```sql
+-- XML definitions (items, blocks, buffs, etc.)
+SELECT * FROM xml_definitions WHERE definition_type = 'item' AND name LIKE '%gun%';
+
+-- XML properties for an entity
+SELECT d.name, p.property_name, p.property_value
+FROM xml_definitions d
+JOIN xml_properties p ON d.id = p.definition_id
+WHERE d.name = 'gunPistol';
+
+-- Semantic mappings (AI-generated descriptions)
+SELECT entity_type, entity_name, layman_description, technical_description
+FROM semantic_mappings
+WHERE entity_name LIKE '%heal%';
+
+-- Search by description
+SELECT entity_type, entity_name, layman_description
+FROM semantic_mappings
+WHERE layman_description LIKE '%damage%';
+
+-- Cross-references between entities
+SELECT source_file, target_type, target_name, reference_context
+FROM xml_references
+WHERE target_name = 'gunPistol';
+```
+
+### Mod Analysis Tables
+
+```sql
 -- Code → XML property access
 SELECT * FROM xml_property_access WHERE property_name = 'Stacknumber';
 
@@ -226,6 +266,15 @@ SELECT * FROM harmony_patches WHERE target_method = 'DecItem';
 
 -- XML changes from mods
 SELECT * FROM xml_changes WHERE file_name = 'items.xml';
+
+-- Mod XML operations
+SELECT m.name, o.operation, o.xpath, o.target_name
+FROM mods m
+JOIN mod_xml_operations o ON m.id = o.mod_id;
+
+-- Event subscriptions
+SELECT subscriber_type, event_owner_type, event_name, handler_method
+FROM event_subscriptions;
 ```
 
 ---
