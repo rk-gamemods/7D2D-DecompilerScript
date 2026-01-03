@@ -10,8 +10,9 @@ echo.
 
 :: Default paths (edit these if needed)
 set "GAME_PATH=C:\Steam\steamapps\common\7 Days To Die"
-set "DB_PATH=%~dp0ecosystem.db"
-set "REPORT_DIR=%~dp0reports"
+set "TOOLKIT_DIR=%~dp0toolkit\XmlIndexer"
+set "DB_PATH=%TOOLKIT_DIR%\ecosystem.db"
+set "REPORT_DIR=%TOOLKIT_DIR%\reports"
 
 :: Check if game path exists
 if not exist "%GAME_PATH%\Data\Config" (
@@ -34,8 +35,8 @@ echo   Starting Analysis...
 echo  ----------------------------------------
 echo.
 
-:: Run the analysis
-cd /d "%~dp0"
+:: Run the analysis from toolkit directory
+cd /d "%TOOLKIT_DIR%"
 
 if "%MODS_PATH%"=="" (
     echo [*] Running base game analysis only (no mods)...
