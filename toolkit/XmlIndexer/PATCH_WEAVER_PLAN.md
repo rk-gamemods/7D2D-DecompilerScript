@@ -303,11 +303,125 @@ They are **complementary tools** - users could use MO2 for installation/profiles
 - [ ] Generate ModInfo.xml
 - [ ] Generate XPath operations
 
-### Phase 5: UI (Future)
-- [ ] Web-based interface
-- [ ] Visual conflict graph
-- [ ] Drag-and-drop priority adjustment
-- [ ] One-click patch generation
+### Phase 5: User Interface
+- [ ] Decision pending - see UI Options below
+
+---
+
+## UI Options Analysis
+
+**Status: ⏳ DECISION PENDING**
+
+### Option A: CLI/TUI (Recommended for MVP)
+
+Use [Spectre.Console](https://spectreconsole.net/) for rich terminal UI.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ PATCH WEAVER - Conflict Resolution                              │
+├─────────────────────────────────────────────────────────────────┤
+│ CONFLICT 1/3: CarryCapacity value                               │
+│                                                                 │
+│   [1] AGF-V2-Backpack72Plus (loads 1st): 36                     │
+│   [2] BiggerBags (loads 5th): 50          ← Current Winner      │
+│   [3] Custom value                                              │
+│   [4] Skip                                                      │
+│                                                                 │
+│ Your choice [1-4]: _                                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Pros | Cons |
+|------|------|
+| ✅ No GUI framework to learn | ❌ Some users intimidated by CLI |
+| ✅ Spectre.Console is beautiful | ❌ Not as discoverable |
+| ✅ Works everywhere | ❌ No visual conflict graphs |
+| ✅ Can be scripted/automated | |
+| ✅ We already have the backend | |
+
+**Effort:** 1-2 weeks
+
+### Option B: MO2 Plugin Extension
+
+Extend MO2's existing 7D2D plugin with XPath awareness.
+
+| Pros | Cons |
+|------|------|
+| ✅ Users already have MO2 | ❌ MO2 architecture assumes file conflicts |
+| ✅ Familiar interface | ❌ Would need Python plugin, not native |
+| | ❌ Maintainer may not accept changes |
+| | ❌ XPath is fundamentally different paradigm |
+
+**Effort:** Unknown, high risk of rejection
+
+### Option C: Web UI (Local)
+
+Generate interactive HTML, user opens in browser.
+
+```bash
+XmlIndexer patch-wizard ecosystem.db --html conflicts.html
+# Opens browser with interactive page
+```
+
+| Pros | Cons |
+|------|------|
+| ✅ Rich UI possible | ❌ No persistent server = limited interactivity |
+| ✅ HTML/JS is universal | ❌ Static HTML can't save state easily |
+| ✅ We already output HTML reports | ❌ Would need localStorage hacks |
+
+**Concern:** Hosting a server is painful and not desired.
+
+**Effort:** 2-3 weeks for limited interactivity
+
+### Option D: In-Game Mod (Harmony) ⭐ INTERESTING
+
+Build Patch Weaver AS a 7D2D mod that runs during game startup.
+
+```
+How it would work:
+1. User installs "PatchWeaver" mod like any other mod
+2. On game launch, PatchWeaver scans all other mods
+3. Uses game's native UI system (XUi) to show conflicts
+4. User resolves conflicts in-game
+5. Generates resolution mod on the fly
+```
+
+| Pros | Cons |
+|------|------|
+| ✅ Uses game's existing UI framework | ❌ Must learn XUi system |
+| ✅ No external dependencies | ❌ Only works when game is running |
+| ✅ Integrated into user's workflow | ❌ Game startup delay |
+| ✅ Can read mod files directly | ❌ Can't analyze before installing mods |
+| ✅ Could show conflicts before world load | ❌ Debugging harder (need game running) |
+
+**Key Insight:** 7D2D already has a mod loading screen. We could hook into that phase to show conflict analysis before the game fully loads.
+
+**Effort:** 3-4 weeks, requires XUi learning
+
+### Comparison Matrix
+
+| Criteria | CLI/TUI | MO2 Plugin | Web UI | In-Game Mod |
+|----------|---------|------------|--------|-------------|
+| Dev effort | Low | High | Medium | Medium-High |
+| User friction | Medium | Low | Medium | Low |
+| Maintenance | Low | High | Low | Medium |
+| Feature richness | Basic | Limited | Medium | High |
+| Discoverability | Low | High | Medium | High |
+| Pre-install analysis | ✅ | ✅ | ✅ | ❌ |
+| Scriptable | ✅ | ❌ | ❌ | ❌ |
+
+### Current Recommendation
+
+**Start with CLI/TUI (Option A)** because:
+1. Fastest to implement
+2. Gets core functionality working
+3. Can be used by power users immediately
+4. Backend logic can be reused for any future UI
+
+**Consider In-Game Mod (Option D)** for v2 because:
+1. Best user experience for average players
+2. Uses existing game UI - no new framework
+3. Natural integration point (mod loading screen)
 
 ---
 
