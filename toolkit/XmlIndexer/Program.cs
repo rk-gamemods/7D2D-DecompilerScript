@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
+using XmlIndexer.Analysis;
 using XmlIndexer.Models;
 using XmlIndexer.Reports;
 
@@ -180,6 +181,24 @@ public class Program
                 _dbPath = args[1];
                 return ShowModDetails(args[2]);
 
+            case "detect-conflicts":
+                if (args.Length < 2)
+                {
+                    Console.WriteLine("Usage: XmlIndexer detect-conflicts <db_path> [--callgraph-db <path>]");
+                    return 1;
+                }
+                _dbPath = args[1];
+                string? callgraphDb = null;
+                for (int i = 2; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--callgraph-db")
+                    {
+                        callgraphDb = args[i + 1];
+                        break;
+                    }
+                }
+                return DetectConflicts(callgraphDb);
+
             default:
                 PrintUsage();
                 return 1;
@@ -210,6 +229,10 @@ public class Program
         Console.WriteLine("    --html                           Generate HTML report (default)");
         Console.WriteLine("    --md                             Generate Markdown report");
         Console.WriteLine("    --json                           Generate JSON data export");
+        Console.WriteLine();
+        Console.WriteLine("CONFLICT DETECTION:");
+        Console.WriteLine("  detect-conflicts <db_path>         Detect XPath-level conflicts (JSON output)");
+        Console.WriteLine("    --callgraph-db <path>            Path to callgraph_full.db for C#/XML analysis");
         Console.WriteLine();
         Console.WriteLine("SEMANTIC ANALYSIS (LLM-powered descriptions):");
         Console.WriteLine("  export-semantic-traces <db> <out>  Export traces for LLM analysis");
@@ -3587,5 +3610,27 @@ public class {className}
         }
 
         return 0;
+    }
+
+    private static int DetectConflicts(string? callgraphDbPath)
+    {
+        if (!File.Exists(_dbPath))
+        {
+            Console.Error.WriteLine($"Error: Database not found: {_dbPath}");
+            return 1;
+        }
+
+        try
+        {
+            var detector = new ConflictDetector(_dbPath!, callgraphDbPath);
+            var report = detector.DetectAllConflicts();
+            detector.OutputJson(report);
+            return report.Summary.High > 0 ? 2 : (report.Summary.Medium > 0 ? 1 : 0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error detecting conflicts: {ex.Message}");
+            return 1;
+        }
     }
 }

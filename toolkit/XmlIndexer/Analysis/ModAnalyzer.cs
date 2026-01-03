@@ -4,6 +4,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Data.Sqlite;
 using XmlIndexer.Models;
+using XmlIndexer.Utils;
 
 namespace XmlIndexer.Analysis;
 
@@ -159,32 +160,38 @@ public class ModAnalyzer
     {
         var modDirs = Directory.GetDirectories(modsFolder)
             .Where(d => !Path.GetFileName(d).StartsWith("."))
+            .OrderBy(d => Path.GetFileName(d)) // 7D2D loads mods alphabetically
             .ToList();
 
         Console.WriteLine($"Persisting analysis for {modDirs.Count} mods...");
 
         using var transaction = db.BeginTransaction();
 
+        int loadOrder = 0;
         foreach (var modDir in modDirs)
         {
+            loadOrder++;
             var modName = Path.GetFileName(modDir);
+            var folderName = Path.GetFileName(modDir);
             var configPath = Path.Combine(modDir, "Config");
             var hasXml = Directory.Exists(configPath) && Directory.GetFiles(configPath, "*.xml").Any();
             var hasDll = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
-                .Any(f => !Path.GetFileName(f).StartsWith("0Harmony") && 
+                .Any(f => !Path.GetFileName(f).StartsWith("0Harmony") &&
                           !Path.GetFileName(f).Contains("System.") &&
                           !Path.GetFileName(f).Contains("Microsoft."));
 
             // Read ModInfo.xml
             var modInfo = ReadModInfo(modDir);
 
-            // Insert mod record
+            // Insert mod record with load order
             using (var cmd = db.CreateCommand())
             {
-                cmd.CommandText = @"INSERT OR REPLACE INTO mods 
-                    (name, has_xml, has_dll, display_name, description, author, version, website)
-                    VALUES ($name, $xml, $dll, $displayName, $desc, $author, $version, $website)";
+                cmd.CommandText = @"INSERT OR REPLACE INTO mods
+                    (name, folder_name, load_order, has_xml, has_dll, display_name, description, author, version, website)
+                    VALUES ($name, $folderName, $loadOrder, $xml, $dll, $displayName, $desc, $author, $version, $website)";
                 cmd.Parameters.AddWithValue("$name", modName);
+                cmd.Parameters.AddWithValue("$folderName", folderName);
+                cmd.Parameters.AddWithValue("$loadOrder", loadOrder);
                 cmd.Parameters.AddWithValue("$xml", hasXml ? 1 : 0);
                 cmd.Parameters.AddWithValue("$dll", hasDll ? 1 : 0);
                 cmd.Parameters.AddWithValue("$displayName", modInfo?.DisplayName ?? (object)DBNull.Value);
@@ -635,13 +642,18 @@ public class ModAnalyzer
                     if (elementContent.Length > 500) 
                         elementContent = elementContent.Substring(0, 500) + "...";
 
+                    // Normalize XPath for conflict detection
+                    var normResult = XPathNormalizer.Normalize(xpath);
+
                     using var cmd = db.CreateCommand();
-                    cmd.CommandText = @"INSERT INTO mod_xml_operations 
-                        (mod_id, operation, xpath, target_type, target_name, property_name, new_value, element_content, file_path, line_number, impact_status)
-                        VALUES ($modId, $op, $xpath, $targetType, $targetName, $propName, $newVal, $content, $file, $line, $status)";
+                    cmd.CommandText = @"INSERT INTO mod_xml_operations
+                        (mod_id, operation, xpath, xpath_normalized, xpath_hash, target_type, target_name, property_name, new_value, element_content, file_path, line_number, impact_status)
+                        VALUES ($modId, $op, $xpath, $xpathNorm, $xpathHash, $targetType, $targetName, $propName, $newVal, $content, $file, $line, $status)";
                     cmd.Parameters.AddWithValue("$modId", modId);
                     cmd.Parameters.AddWithValue("$op", op);
                     cmd.Parameters.AddWithValue("$xpath", xpath);
+                    cmd.Parameters.AddWithValue("$xpathNorm", normResult.Normalized);
+                    cmd.Parameters.AddWithValue("$xpathHash", normResult.Hash);
                     cmd.Parameters.AddWithValue("$targetType", target?.Type ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("$targetName", target?.Name ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("$propName", propertyName ?? (object)DBNull.Value);

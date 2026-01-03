@@ -169,6 +169,8 @@ public static class DatabaseBuilder
         CREATE TABLE mods (
             id INTEGER PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
+            folder_name TEXT,
+            load_order INTEGER,
             has_xml INTEGER DEFAULT 0,
             has_dll INTEGER DEFAULT 0,
             xml_operations INTEGER DEFAULT 0,
@@ -183,12 +185,15 @@ public static class DatabaseBuilder
             website TEXT
         );
         CREATE INDEX idx_mod_name ON mods(name);
+        CREATE INDEX idx_mod_load_order ON mods(load_order);
 
         CREATE TABLE mod_xml_operations (
             id INTEGER PRIMARY KEY,
             mod_id INTEGER,
             operation TEXT NOT NULL,
             xpath TEXT NOT NULL,
+            xpath_normalized TEXT,
+            xpath_hash TEXT,
             target_type TEXT,
             target_name TEXT,
             property_name TEXT,
@@ -200,6 +205,8 @@ public static class DatabaseBuilder
         );
         CREATE INDEX idx_modxml_mod ON mod_xml_operations(mod_id);
         CREATE INDEX idx_modxml_target ON mod_xml_operations(target_type, target_name);
+        CREATE INDEX idx_modxml_xpath_hash ON mod_xml_operations(xpath_hash);
+        CREATE INDEX idx_modxml_xpath_hash_op ON mod_xml_operations(xpath_hash, operation);
 
         CREATE TABLE mod_csharp_deps (
             id INTEGER PRIMARY KEY,
@@ -246,5 +253,113 @@ public static class DatabaseBuilder
         );
         CREATE INDEX idx_semantic_type ON semantic_mappings(entity_type);
         CREATE INDEX idx_semantic_name ON semantic_mappings(entity_name);
+
+        -- CONFLICT DETECTION VIEWS --
+
+        -- v_xpath_conflicts: Groups operations by normalized xpath+operation to find real conflicts
+        CREATE VIEW v_xpath_conflicts AS
+        SELECT
+            o.xpath_hash,
+            o.xpath_normalized,
+            o.operation,
+            COUNT(DISTINCT o.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name) as mods_involved,
+            COUNT(DISTINCT o.new_value) as distinct_values,
+            CASE
+                WHEN COUNT(DISTINCT o.new_value) > 1 THEN 'REAL_CONFLICT'
+                WHEN COUNT(DISTINCT o.new_value) = 1 THEN 'SAME_VALUE'
+                ELSE 'COMPLEMENTARY'
+            END as conflict_type,
+            CASE
+                WHEN o.operation IN ('remove', 'removeattribute') THEN 'HIGH'
+                WHEN o.target_type IN ('entity_class', 'progression', 'gamestages', 'loot') THEN 'MEDIUM'
+                WHEN o.target_name LIKE 'player%' OR o.target_name LIKE 'zombie%' THEN 'MEDIUM'
+                ELSE 'LOW'
+            END as base_severity,
+            o.target_type,
+            o.target_name,
+            o.property_name
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.xpath_hash IS NOT NULL
+        GROUP BY o.xpath_hash, o.operation
+        HAVING COUNT(DISTINCT o.mod_id) > 1;
+
+        -- v_destructive_conflicts: Detects edit-vs-remove conflicts (HIGH severity)
+        CREATE VIEW v_destructive_conflicts AS
+        SELECT
+            a.xpath_hash,
+            a.xpath_normalized as xpath,
+            ma.name as editor_mod,
+            a.operation as editor_op,
+            a.new_value as editor_value,
+            mb.name as remover_mod,
+            b.operation as remover_op,
+            a.target_type,
+            a.target_name,
+            ma.load_order as editor_load_order,
+            mb.load_order as remover_load_order,
+            CASE
+                WHEN mb.load_order > ma.load_order THEN 'REMOVER_WINS'
+                ELSE 'EDITOR_WINS'
+            END as winner
+        FROM mod_xml_operations a
+        JOIN mod_xml_operations b ON a.xpath_hash = b.xpath_hash
+        JOIN mods ma ON a.mod_id = ma.id
+        JOIN mods mb ON b.mod_id = mb.id
+        WHERE a.operation IN ('set', 'append', 'setattribute', 'insertAfter', 'insertBefore')
+          AND b.operation IN ('remove', 'removeattribute')
+          AND a.mod_id != b.mod_id;
+
+        -- v_contested_entities: Entity-level conflict summary with risk assessment
+        CREATE VIEW v_contested_entities AS
+        SELECT
+            o.target_type,
+            o.target_name,
+            COUNT(DISTINCT o.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name || ':' || o.operation) as mod_actions,
+            SUM(CASE WHEN o.operation IN ('remove', 'removeattribute') THEN 1 ELSE 0 END) as removal_count,
+            SUM(CASE WHEN o.operation = 'set' THEN 1 ELSE 0 END) as set_count,
+            SUM(CASE WHEN o.operation = 'append' THEN 1 ELSE 0 END) as append_count,
+            CASE
+                WHEN SUM(CASE WHEN o.operation IN ('remove', 'removeattribute') THEN 1 ELSE 0 END) > 0
+                     AND SUM(CASE WHEN o.operation NOT IN ('remove', 'removeattribute') THEN 1 ELSE 0 END) > 0
+                THEN 'HIGH'
+                WHEN COUNT(DISTINCT o.mod_id) >= 3 THEN 'MEDIUM'
+                WHEN o.target_name LIKE 'player%' OR o.target_name LIKE 'zombie%' THEN 'MEDIUM'
+                ELSE 'LOW'
+            END as risk_level
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.target_type IS NOT NULL AND o.target_name IS NOT NULL
+        GROUP BY o.target_type, o.target_name
+        HAVING COUNT(DISTINCT o.mod_id) > 1;
+
+        -- v_load_order_winners: Shows which mod wins for each conflicting xpath
+        CREATE VIEW v_load_order_winners AS
+        SELECT
+            o.xpath_hash,
+            o.xpath_normalized as xpath,
+            o.operation,
+            m.name as winning_mod,
+            m.load_order,
+            o.new_value as winning_value,
+            o.target_type,
+            o.target_name,
+            (SELECT COUNT(DISTINCT o2.mod_id)
+             FROM mod_xml_operations o2
+             WHERE o2.xpath_hash = o.xpath_hash AND o2.operation = o.operation) as total_mods
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.xpath_hash IS NOT NULL
+          AND m.load_order = (
+              SELECT MAX(m2.load_order)
+              FROM mod_xml_operations o2
+              JOIN mods m2 ON o2.mod_id = m2.id
+              WHERE o2.xpath_hash = o.xpath_hash AND o2.operation = o.operation
+          )
+          AND (SELECT COUNT(DISTINCT o3.mod_id)
+               FROM mod_xml_operations o3
+               WHERE o3.xpath_hash = o.xpath_hash AND o3.operation = o.operation) > 1;
     ";
 }
