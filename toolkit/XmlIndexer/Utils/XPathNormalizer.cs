@@ -292,4 +292,182 @@ public static class XPathNormalizer
         var norm2 = Normalize(xpath2);
         return norm1.Hash == norm2.Hash;
     }
+
+    /// <summary>
+    /// Context information extracted from an XPath targeting passive_effect or triggered_effect.
+    /// </summary>
+    public record EffectContext(
+        string? EffectName,           // passive_effect[@name='X'] -> X
+        string? EffectAttribute,      // The attribute being modified (@operation, @value, @tags)
+        string? ParentEntity,         // entity_class, buff, item, perk
+        string? ParentEntityName,     // playerMale, buffGodMode, etc.
+        bool IsOperationChange,       // True if modifying @operation
+        bool IsValueChange,           // True if modifying @value
+        bool IsTriggeredEffect,       // True if this targets a triggered_effect
+        string? TriggerAction,        // For triggered_effect: ModifyCVar, AddBuff, etc.
+        string? TriggerCVar,          // For triggered_effect: target CVar name
+        string? TriggerOperation      // For triggered_effect: set, add, multiply
+    );
+
+    /// <summary>
+    /// Extracts effect context information from an XPath expression.
+    /// Used for detecting passive_effect and triggered_effect conflicts.
+    /// </summary>
+    public static EffectContext ExtractEffectContext(string xpath)
+    {
+        string? effectName = null;
+        string? effectAttribute = null;
+        string? parentEntity = null;
+        string? parentEntityName = null;
+        bool isOperationChange = false;
+        bool isValueChange = false;
+        bool isTriggeredEffect = false;
+        string? triggerAction = null;
+        string? triggerCVar = null;
+        string? triggerOperation = null;
+
+        // Extract parent entity type and name
+        var parentPatterns = new Dictionary<string, string>
+        {
+            { @"entity_class(?:es)?/entity_class\[@name=[""']([^""']+)[""']\]", "entity_class" },
+            { @"buffs?/buff\[@name=[""']([^""']+)[""']\]", "buff" },
+            { @"items?/item\[@name=[""']([^""']+)[""']\]", "item" },
+            { @"perks?/perk\[@name=[""']([^""']+)[""']\]", "perk" },
+            { @"skills?/skill\[@name=[""']([^""']+)[""']\]", "skill" },
+            { @"blocks?/block\[@name=[""']([^""']+)[""']\]", "block" },
+        };
+
+        foreach (var pattern in parentPatterns)
+        {
+            var match = Regex.Match(xpath, pattern.Key, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                parentEntity = pattern.Value;
+                parentEntityName = match.Groups[1].Value;
+                break;
+            }
+        }
+
+        // Check if this is a triggered_effect modification
+        if (Regex.IsMatch(xpath, @"triggered_effect", RegexOptions.IgnoreCase))
+        {
+            isTriggeredEffect = true;
+
+            // Extract action type (e.g., ModifyCVar, AddBuff)
+            var actionMatch = Regex.Match(xpath, @"triggered_effect\[@action=[""']([^""']+)[""']\]", RegexOptions.IgnoreCase);
+            if (actionMatch.Success)
+            {
+                triggerAction = actionMatch.Groups[1].Value;
+            }
+
+            // Extract CVar name for ModifyCVar actions
+            var cvarMatch = Regex.Match(xpath, @"@cvar=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+            if (cvarMatch.Success)
+            {
+                triggerCVar = cvarMatch.Groups[1].Value;
+            }
+
+            // Extract operation type for CVar modifications
+            var triggerOpMatch = Regex.Match(xpath, @"triggered_effect.*@operation=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+            if (triggerOpMatch.Success)
+            {
+                triggerOperation = triggerOpMatch.Groups[1].Value;
+            }
+
+            // Check if modifying @operation or @value on triggered_effect
+            if (Regex.IsMatch(xpath, @"triggered_effect.*/@operation\s*$", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(xpath, @"triggered_effect.*\[@.*\]/@operation\s*$", RegexOptions.IgnoreCase))
+            {
+                isOperationChange = true;
+                effectAttribute = "@operation";
+            }
+            if (Regex.IsMatch(xpath, @"triggered_effect.*/@value\s*$", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(xpath, @"triggered_effect.*\[@.*\]/@value\s*$", RegexOptions.IgnoreCase))
+            {
+                isValueChange = true;
+                effectAttribute = "@value";
+            }
+        }
+
+        // Check for passive_effect modifications
+        var passiveEffectMatch = Regex.Match(xpath, @"passive_effect\[@name=[""']([^""']+)[""']\]", RegexOptions.IgnoreCase);
+        if (passiveEffectMatch.Success)
+        {
+            effectName = passiveEffectMatch.Groups[1].Value;
+
+            // Check what attribute is being modified
+            if (Regex.IsMatch(xpath, @"/@operation\s*$", RegexOptions.IgnoreCase))
+            {
+                isOperationChange = true;
+                effectAttribute = "@operation";
+            }
+            else if (Regex.IsMatch(xpath, @"/@value\s*$", RegexOptions.IgnoreCase))
+            {
+                isValueChange = true;
+                effectAttribute = "@value";
+            }
+            else if (Regex.IsMatch(xpath, @"/@tags\s*$", RegexOptions.IgnoreCase))
+            {
+                effectAttribute = "@tags";
+            }
+        }
+
+        // Also extract effect name from effect_group paths
+        if (effectName == null)
+        {
+            var effectGroupMatch = Regex.Match(xpath, @"effect_group(?:\[@.*?\])?/passive_effect\[@name=[""']([^""']+)[""']\]", RegexOptions.IgnoreCase);
+            if (effectGroupMatch.Success)
+            {
+                effectName = effectGroupMatch.Groups[1].Value;
+            }
+        }
+
+        return new EffectContext(
+            effectName,
+            effectAttribute,
+            parentEntity,
+            parentEntityName,
+            isOperationChange,
+            isValueChange,
+            isTriggeredEffect,
+            triggerAction,
+            triggerCVar,
+            triggerOperation
+        );
+    }
+
+    /// <summary>
+    /// Extracts the effect operation type from a value that may be set via XPath.
+    /// Returns the operation type (base_set, perc_add, etc.) and value type (base/perc).
+    /// </summary>
+    public static (string? Operation, string? ValueType, bool IsSetOperation) ParseEffectOperation(string? operationValue)
+    {
+        if (string.IsNullOrEmpty(operationValue))
+            return (null, null, false);
+
+        var op = operationValue.ToLowerInvariant().Trim();
+
+        // Valid effect operation types
+        var validOperations = new HashSet<string>
+        {
+            "base_set", "base_add", "base_subtract",
+            "perc_set", "perc_add", "perc_subtract"
+        };
+
+        if (!validOperations.Contains(op))
+            return (null, null, false);
+
+        string? valueType = null;
+        bool isSetOperation = false;
+
+        if (op.StartsWith("base_"))
+            valueType = "base";
+        else if (op.StartsWith("perc_"))
+            valueType = "perc";
+
+        if (op.EndsWith("_set"))
+            isSetOperation = true;
+
+        return (op, valueType, isSetOperation);
+    }
 }
