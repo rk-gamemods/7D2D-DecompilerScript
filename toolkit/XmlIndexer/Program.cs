@@ -236,6 +236,42 @@ public class Program
                 }
                 return TestXPathParsing(string.Join(" ", args.Skip(1)));
 
+            case "analyze-game":
+                if (args.Length < 3)
+                {
+                    Console.WriteLine("Usage: XmlIndexer analyze-game <db_path> <game_codebase_path> [--force]");
+                    Console.WriteLine("  Analyzes decompiled game code for potential bugs, stubs, and hidden features.");
+                    Console.WriteLine("  --force  Force re-analysis of all files (skip incremental hash check)");
+                    return 1;
+                }
+                _dbPath = args[1];
+                var gameCodePath = args[2];
+                var forceAnalyze = args.Contains("--force");
+                return AnalyzeGameCode(gameCodePath, forceAnalyze);
+
+            case "index-game":
+                if (args.Length < 3)
+                {
+                    Console.WriteLine("Usage: XmlIndexer index-game <db_path> <game_codebase_path> [--force]");
+                    Console.WriteLine("  Indexes method signatures and class inheritance from decompiled game code.");
+                    Console.WriteLine("  --force  Force re-index of all files");
+                    return 1;
+                }
+                _dbPath = args[1];
+                var indexCodePath = args[2];
+                var forceIndex = args.Contains("--force");
+                return IndexGameCode(indexCodePath, forceIndex);
+
+            case "detect-harmony-conflicts":
+                if (args.Length < 2)
+                {
+                    Console.WriteLine("Usage: XmlIndexer detect-harmony-conflicts <db_path>");
+                    Console.WriteLine("  Detects Harmony patch conflicts between mods.");
+                    return 1;
+                }
+                _dbPath = args[1];
+                return DetectHarmonyConflicts();
+
             default:
                 PrintUsage();
                 return 1;
@@ -269,8 +305,15 @@ public class Program
         Console.WriteLine("CONFLICT DETECTION:");
         Console.WriteLine("  detect-conflicts <db_path>         Detect XPath-level conflicts (JSON output)");
         Console.WriteLine("    --callgraph-db <path>            Path to callgraph_full.db for C#/XML analysis");
+        Console.WriteLine("  detect-harmony-conflicts <db>      Detect Harmony patch conflicts between mods");
         Console.WriteLine("  build-dependency-graph <db>        Build transitive references + indirect conflicts");
         Console.WriteLine("  impact-analysis <db> <type> <name> Show what depends on an entity");
+        Console.WriteLine();
+        Console.WriteLine("GAME CODE ANALYSIS:");
+        Console.WriteLine("  analyze-game <db> <codebase_path>  Analyze game code for bugs and opportunities");
+        Console.WriteLine("    --force                          Force re-analysis of all files");
+        Console.WriteLine("  index-game <db> <codebase_path>    Index method signatures and inheritance");
+        Console.WriteLine("    --force                          Force re-index of all files");
         Console.WriteLine();
         Console.WriteLine("SEMANTIC ANALYSIS (LLM-powered descriptions):");
         Console.WriteLine("  export-semantic-traces <db> <out>  Export traces for LLM analysis");
@@ -388,137 +431,8 @@ public class Program
         using var db = new SqliteConnection($"Data Source={_dbPath}");
         db.Open();
 
-        // Create schema
-        using (var cmd = db.CreateCommand())
-        {
-            cmd.CommandText = @"
-                CREATE TABLE xml_definitions (
-                    id INTEGER PRIMARY KEY,
-                    definition_type TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    line_number INTEGER,
-                    extends TEXT
-                );
-                CREATE INDEX idx_def_type_name ON xml_definitions(definition_type, name);
-                CREATE INDEX idx_def_name ON xml_definitions(name);
-
-                CREATE TABLE xml_properties (
-                    id INTEGER PRIMARY KEY,
-                    definition_id INTEGER,
-                    property_name TEXT NOT NULL,
-                    property_value TEXT,
-                    property_class TEXT,
-                    line_number INTEGER
-                );
-                CREATE INDEX idx_prop_def ON xml_properties(definition_id);
-                CREATE INDEX idx_prop_name ON xml_properties(property_name);
-
-                CREATE TABLE xml_references (
-                    id INTEGER PRIMARY KEY,
-                    source_type TEXT NOT NULL,
-                    source_def_id INTEGER,
-                    source_file TEXT NOT NULL,
-                    source_line INTEGER,
-                    target_type TEXT NOT NULL,
-                    target_name TEXT NOT NULL,
-                    reference_context TEXT
-                );
-                CREATE INDEX idx_ref_target ON xml_references(target_type, target_name);
-
-                CREATE TABLE xml_stats (
-                    definition_type TEXT PRIMARY KEY,
-                    count INTEGER
-                );
-
-                -- MOD ANALYSIS TABLES --
-                CREATE TABLE mods (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL,
-                    folder_name TEXT,
-                    load_order INTEGER DEFAULT 0,
-                    has_xml INTEGER DEFAULT 0,
-                    has_dll INTEGER DEFAULT 0,
-                    xml_operations INTEGER DEFAULT 0,
-                    csharp_dependencies INTEGER DEFAULT 0,
-                    conflicts INTEGER DEFAULT 0,
-                    cautions INTEGER DEFAULT 0,
-                    -- ModInfo.xml fields
-                    display_name TEXT,
-                    description TEXT,
-                    author TEXT,
-                    version TEXT,
-                    website TEXT
-                );
-                CREATE INDEX idx_mod_name ON mods(name);
-                CREATE INDEX idx_mod_load_order ON mods(load_order);
-
-                CREATE TABLE mod_xml_operations (
-                    id INTEGER PRIMARY KEY,
-                    mod_id INTEGER,
-                    operation TEXT NOT NULL,
-                    xpath TEXT NOT NULL,
-                    target_type TEXT,
-                    target_name TEXT,
-                    property_name TEXT,
-                    new_value TEXT,
-                    element_content TEXT,
-                    file_path TEXT,
-                    line_number INTEGER,
-                    impact_status TEXT
-                );
-                CREATE INDEX idx_modxml_mod ON mod_xml_operations(mod_id);
-                CREATE INDEX idx_modxml_target ON mod_xml_operations(target_type, target_name);
-
-                CREATE TABLE mod_csharp_deps (
-                    id INTEGER PRIMARY KEY,
-                    mod_id INTEGER,
-                    dependency_type TEXT NOT NULL,
-                    dependency_name TEXT NOT NULL,
-                    source_file TEXT,
-                    line_number INTEGER,
-                    pattern TEXT,
-                    code_snippet TEXT
-                );
-                CREATE INDEX idx_csdep_mod ON mod_csharp_deps(mod_id);
-                CREATE INDEX idx_csdep_target ON mod_csharp_deps(dependency_type, dependency_name);
-
-                -- ECOSYSTEM VIEW (materialized after mod analysis) --
-                CREATE TABLE ecosystem_entities (
-                    id INTEGER PRIMARY KEY,
-                    entity_type TEXT NOT NULL,
-                    entity_name TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    status TEXT DEFAULT 'active',
-                    modified_by TEXT,
-                    removed_by TEXT,
-                    depended_on_by TEXT
-                );
-                CREATE INDEX idx_eco_type ON ecosystem_entities(entity_type);
-                CREATE INDEX idx_eco_status ON ecosystem_entities(status);
-
-                -- SEMANTIC MAPPINGS (LLM-generated or manual descriptions) --
-                CREATE TABLE semantic_mappings (
-                    id INTEGER PRIMARY KEY,
-                    entity_type TEXT NOT NULL,        -- 'xml_property', 'csharp_class', 'csharp_method', 'game_system'
-                    entity_name TEXT NOT NULL,        -- 'CarryCapacity', 'XUiM_PlayerInventory', 'HasItems', etc.
-                    parent_context TEXT,              -- For methods: the class. For properties: the XML element type
-                    layman_description TEXT,          -- 'How many items you can carry in your backpack'
-                    technical_description TEXT,       -- 'Integer property on buff/entity passive_effect'
-                    player_impact TEXT,               -- 'increase', 'decrease', 'enable', 'disable', 'modify'
-                    related_systems TEXT,             -- 'Inventory,Crafting' (comma-separated)
-                    example_usage TEXT,               -- 'Used by backpack mods to increase carry slots'
-                    generated_by TEXT DEFAULT 'pending', -- 'llm', 'manual', 'heuristic', 'pending'
-                    confidence REAL DEFAULT 0.0,      -- 0.0-1.0 confidence score
-                    llm_model TEXT,                   -- 'llama-13b', 'mistral-7b', etc.
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(entity_type, entity_name, parent_context)
-                );
-                CREATE INDEX idx_semantic_type ON semantic_mappings(entity_type);
-                CREATE INDEX idx_semantic_name ON semantic_mappings(entity_name);
-            ";
-            cmd.ExecuteNonQuery();
-        }
+        // Create complete schema (includes Harmony, GameCode analysis tables)
+        Database.DatabaseBuilder.CreateSchema(db);
 
         // Bulk insert using transactions
         using var transaction = db.BeginTransaction();
@@ -1944,6 +1858,12 @@ public class Program
                 cmd.ExecuteNonQuery();
             }
 
+            // Scan for Harmony patches if mod has DLLs
+            if (hasDll)
+            {
+                ScanAndStoreHarmonyPatches(modDir, modName, modId, db);
+            }
+
             // Update mod stats
             using (var cmd = db.CreateCommand())
             {
@@ -1964,6 +1884,98 @@ public class Program
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Scans decompiled mod DLLs for detailed Harmony patch information and stores in database.
+    /// </summary>
+    private static void ScanAndStoreHarmonyPatches(string modDir, string modName, long modId, SqliteConnection db)
+    {
+        var modDlls = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
+            .Where(dll => !Path.GetFileName(dll).StartsWith("0Harmony", StringComparison.OrdinalIgnoreCase))
+            .Where(dll => !Path.GetFileName(dll).Equals("Mono.Cecil.dll", StringComparison.OrdinalIgnoreCase))
+            .Where(dll => !Path.GetFileName(dll).Contains("System."))
+            .Where(dll => !Path.GetFileName(dll).Contains("Microsoft."))
+            .ToList();
+        
+        if (modDlls.Count == 0) return;
+
+        int totalPatches = 0;
+        foreach (var dllPath in modDlls)
+        {
+            var csFiles = CSharpAnalyzer.DecompileModDll(dllPath, modName);
+            if (csFiles.Count == 0) continue;
+
+            foreach (var csFile in csFiles)
+            {
+                try
+                {
+                    var content = File.ReadAllText(csFile);
+                    var fileName = Path.GetFileName(csFile);
+
+                    // Use detailed Harmony patch scanning
+                    var patches = CSharpAnalyzer.ScanHarmonyPatchesDetailed(content, modId, fileName);
+
+                    foreach (var patch in patches)
+                    {
+                        PersistHarmonyPatch(db, patch);
+                        totalPatches++;
+                    }
+                }
+                catch { /* Skip unreadable files */ }
+            }
+        }
+        
+        if (totalPatches > 0)
+        {
+            Console.WriteLine($"        Found {totalPatches} Harmony patches");
+        }
+    }
+
+    /// <summary>
+    /// Persists a single Harmony patch to the database.
+    /// </summary>
+    private static void PersistHarmonyPatch(SqliteConnection db, HarmonyPatchInfo patch)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR REPLACE INTO harmony_patches
+            (mod_id, patch_class, target_class, target_method, patch_type,
+             target_member_kind, target_arg_types, target_declaring_type,
+             harmony_priority, harmony_before, harmony_after,
+             returns_bool, modifies_result, modifies_state,
+             is_guarded, guard_condition, is_dynamic,
+             parameter_signature, code_snippet, source_file, line_number)
+            VALUES ($modId, $patchClass, $targetClass, $targetMethod, $patchType,
+                    $memberKind, $argTypes, $declaringType,
+                    $priority, $before, $after,
+                    $returnsBool, $modifiesResult, $modifiesState,
+                    $isGuarded, $guardCondition, $isDynamic,
+                    $paramSig, $snippet, $file, $line)";
+
+        cmd.Parameters.AddWithValue("$modId", patch.ModId);
+        cmd.Parameters.AddWithValue("$patchClass", patch.PatchClass);
+        cmd.Parameters.AddWithValue("$targetClass", patch.TargetClass);
+        cmd.Parameters.AddWithValue("$targetMethod", patch.TargetMethod);
+        cmd.Parameters.AddWithValue("$patchType", patch.PatchType);
+        cmd.Parameters.AddWithValue("$memberKind", patch.TargetMemberKind ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$argTypes", patch.TargetArgTypes ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$declaringType", patch.TargetDeclaringType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$priority", patch.HarmonyPriority);
+        cmd.Parameters.AddWithValue("$before", patch.HarmonyBefore ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$after", patch.HarmonyAfter ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$returnsBool", patch.ReturnsBool ? 1 : 0);
+        cmd.Parameters.AddWithValue("$modifiesResult", patch.ModifiesResult ? 1 : 0);
+        cmd.Parameters.AddWithValue("$modifiesState", patch.ModifiesState ? 1 : 0);
+        cmd.Parameters.AddWithValue("$isGuarded", patch.IsGuarded ? 1 : 0);
+        cmd.Parameters.AddWithValue("$guardCondition", patch.GuardCondition ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$isDynamic", patch.IsDynamic ? 1 : 0);
+        cmd.Parameters.AddWithValue("$paramSig", patch.ParameterSignature ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$snippet", patch.CodeSnippet ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$file", patch.SourceFile ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$line", patch.LineNumber ?? (object)DBNull.Value);
+
+        cmd.ExecuteNonQuery();
     }
 
     // XmlAnalysisResult defined in Models/DataModels.cs
@@ -2595,8 +2607,29 @@ public class Program
         using var db = new SqliteConnection($"Data Source={_dbPath}");
         db.Open();
 
+        // Try to find decompiled game code for analysis
+        // Look in common locations: relative to game path, or parallel to output
+        string? gameCodebasePath = null;
+        var possibleCodebasePaths = new[]
+        {
+            Path.Combine(Path.GetDirectoryName(outputDir) ?? "", "7D2DCodebase", "Assembly-CSharp"),
+            Path.Combine(outputDir, "..", "7D2DCodebase", "Assembly-CSharp"),
+            Path.Combine(_gamePath ?? "", "..", "7D2DCodebase", "Assembly-CSharp"),
+        };
+
+        foreach (var path in possibleCodebasePaths)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (Directory.Exists(fullPath))
+            {
+                gameCodebasePath = fullPath;
+                Console.WriteLine($"  Found game codebase: {gameCodebasePath}");
+                break;
+            }
+        }
+
         // Generate the multi-page site (time will be injected after)
-        var siteFolder = ReportSiteGenerator.Generate(db, outputDir, 0);
+        var siteFolder = ReportSiteGenerator.Generate(db, outputDir, 0, gameCodebasePath);
         var indexPath = Path.Combine(siteFolder, "index.html");
 
         totalSw.Stop();
@@ -3999,6 +4032,116 @@ public class {className}
             Console.WriteLine("  ✓ No mod conflicts involving this entity.");
             Console.ResetColor();
         }
+
+        return 0;
+    }
+
+    // =========================================================================
+    // Game Code Analysis Commands
+    // =========================================================================
+
+    private static int AnalyzeGameCode(string codebasePath, bool force)
+    {
+        Console.WriteLine("=== Game Code Analysis ===");
+        Console.WriteLine($"Codebase: {codebasePath}");
+        Console.WriteLine($"Database: {_dbPath}");
+        Console.WriteLine();
+
+        var sw = Stopwatch.StartNew();
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Ensure schema exists
+        Database.DatabaseBuilder.CreateSchema(db);
+
+        var analyzer = new Analysis.GameCodeAnalyzer(db);
+        analyzer.AnalyzeGameCode(codebasePath, force);
+
+        Console.WriteLine();
+        Console.WriteLine($"Completed in {sw.Elapsed.TotalSeconds:F2}s");
+
+        return 0;
+    }
+
+    private static int IndexGameCode(string codebasePath, bool force)
+    {
+        Console.WriteLine("=== Game Code Indexing ===");
+        Console.WriteLine($"Codebase: {codebasePath}");
+        Console.WriteLine($"Database: {_dbPath}");
+        Console.WriteLine();
+
+        var sw = Stopwatch.StartNew();
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Ensure schema exists
+        Database.DatabaseBuilder.CreateSchema(db);
+
+        var indexer = new Utils.GameCodeIndexer(db);
+        indexer.IndexGameCode(codebasePath, force);
+
+        Console.WriteLine();
+        Console.WriteLine($"Completed in {sw.Elapsed.TotalSeconds:F2}s");
+
+        return 0;
+    }
+
+    private static int DetectHarmonyConflicts()
+    {
+        Console.WriteLine("=== Harmony Conflict Detection ===");
+        Console.WriteLine($"Database: {_dbPath}");
+        Console.WriteLine();
+
+        var sw = Stopwatch.StartNew();
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Check if harmony_patches table has data
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM harmony_patches";
+        long patchCount;
+        try
+        {
+            patchCount = (long)checkCmd.ExecuteScalar()!;
+        }
+        catch
+        {
+            Console.WriteLine("  Error: No Harmony patch data found. Run analyze-mods first.");
+            return 1;
+        }
+
+        Console.WriteLine($"  Found {patchCount} Harmony patches to analyze");
+
+        var report = Analysis.HarmonyConflictDetector.DetectAllConflicts(db);
+
+        Console.WriteLine();
+        Console.WriteLine("=== Results ===");
+        Console.WriteLine($"  Collisions:           {report.Collisions.Count}");
+        Console.WriteLine($"  Transpiler Conflicts: {report.TranspilerConflicts.Count}");
+        Console.WriteLine($"  Skip Conflicts:       {report.SkipConflicts.Count}");
+        Console.WriteLine($"  Inheritance Overlaps: {report.InheritanceOverlaps.Count}");
+        Console.WriteLine($"  Order Conflicts:      {report.OrderConflicts.Count}");
+        Console.WriteLine();
+
+        if (report.CriticalCount > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"  CRITICAL: {report.CriticalCount} conflicts require immediate attention!");
+            Console.ResetColor();
+        }
+
+        if (report.HighCount > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"  HIGH: {report.HighCount} conflicts likely to cause issues");
+            Console.ResetColor();
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Completed in {sw.Elapsed.TotalSeconds:F2}s");
 
         return 0;
     }

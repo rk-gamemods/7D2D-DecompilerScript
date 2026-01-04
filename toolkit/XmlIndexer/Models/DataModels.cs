@@ -312,3 +312,214 @@ public record EventFlowEdge(
     int SubscriberCount,
     int TriggerCount
 );
+
+// =========================================================================
+// Harmony Patch Analysis Models
+// =========================================================================
+
+/// <summary>Detailed Harmony patch information for conflict detection</summary>
+public record HarmonyPatchInfo(
+    long Id,
+    long ModId,
+    string PatchClass,
+    string TargetClass,
+    string TargetMethod,
+    string PatchType,
+    string? TargetMemberKind = null,
+    string? TargetArgTypes = null,
+    string? TargetDeclaringType = null,
+    int HarmonyPriority = 400,
+    string? HarmonyBefore = null,
+    string? HarmonyAfter = null,
+    bool ReturnsBool = false,
+    bool ModifiesResult = false,
+    bool ModifiesState = false,
+    bool IsGuarded = false,
+    string? GuardCondition = null,
+    bool IsDynamic = false,
+    string? ParameterSignature = null,
+    string? CodeSnippet = null,
+    string? SourceFile = null,
+    int? LineNumber = null
+);
+
+/// <summary>Detected conflict between Harmony patches</summary>
+public record HarmonyConflict(
+    long Id,
+    string TargetClass,
+    string TargetMethod,
+    string ConflictType,
+    string Severity,
+    string Confidence,
+    long? Mod1Id,
+    long? Mod2Id,
+    long? Patch1Id,
+    long? Patch2Id,
+    bool SameSignature,
+    string? Explanation,
+    string? Reasoning
+);
+
+/// <summary>Harmony conflict types</summary>
+public enum HarmonyConflictType
+{
+    Collision,              // Multiple mods patching same method
+    TranspilerDuplicate,    // Multiple transpilers on same method (CRITICAL)
+    SignatureMismatch,      // Patch signature doesn't match game method
+    SkipConflict,           // Prefix can skip + other patches exist
+    InheritanceOverlap,     // Patches on parent/child class methods
+    OrderConflict           // Conflicting priority/before/after
+}
+
+/// <summary>Conflict severity levels</summary>
+public enum ConflictSeverity
+{
+    Critical,   // Almost guaranteed to cause issues (multiple transpilers)
+    High,       // Very likely to cause issues (skip conflicts, result overwrites)
+    Medium,     // May cause issues depending on usage (same target, different values)
+    Low         // Informational (same target, potentially compatible)
+}
+
+/// <summary>Confidence level for detected issues</summary>
+public enum ConfidenceLevel
+{
+    High,       // High certainty this is a real issue
+    Medium,     // Likely an issue but may have false positives
+    Low         // Possible issue, requires manual verification
+}
+
+// =========================================================================
+// Game Code Analysis Models
+// =========================================================================
+
+/// <summary>Game code analysis finding (bug, dead code, etc.)</summary>
+public record GameCodeFinding(
+    long Id,
+    string AnalysisType,
+    string ClassName,
+    string? MethodName,
+    string Severity,
+    string Confidence,
+    string? Description,
+    string? Reasoning,
+    string? CodeSnippet,
+    string? FilePath,
+    int? LineNumber,
+    string? PotentialFix,
+    string? RelatedEntities,
+    string? FileHash,
+    bool IsUnityMagic = false,
+    bool IsReflectionTarget = false
+);
+
+/// <summary>Game code analysis types</summary>
+public enum GameCodeAnalysisType
+{
+    DeadCode,           // Methods never called
+    Unreachable,        // Code after unconditional return/throw
+    NullDeref,          // Potential null dereference
+    Unimplemented,      // NotImplementedException thrown
+    Suspicious,         // Suspicious patterns (FP equality, missing break, etc.)
+    Todo,               // TODO/FIXME comments
+    Secret,             // Hidden features, debug flags, console commands
+    EmptyCatch,         // Empty catch blocks
+    StubMethod          // Methods with only return null/default
+}
+
+/// <summary>Finding severity for game code analysis</summary>
+public enum FindingSeverity
+{
+    Bug,            // Likely a bug
+    Warning,        // Potential issue worth investigating
+    Info,           // Informational finding
+    Opportunity     // Modding opportunity or hidden feature
+}
+
+// =========================================================================
+// Type Resolution Models
+// =========================================================================
+
+/// <summary>Cached method signature for overload matching</summary>
+public record MethodSignatureInfo(
+    long Id,
+    string ClassName,
+    string MethodName,
+    string ParameterTypes,
+    string? ParameterTypesFull,
+    string? ReturnType,
+    string? ReturnTypeFull,
+    bool IsStatic,
+    bool IsVirtual,
+    bool IsOverride,
+    string? AccessModifier,
+    string? DeclaringClass,
+    string? FilePath,
+    string? FileHash
+);
+
+/// <summary>Class inheritance information</summary>
+public record ClassInheritanceInfo(
+    long Id,
+    string ClassName,
+    string? ParentClass,
+    string? Interfaces,
+    bool IsAbstract,
+    bool IsSealed,
+    string? FilePath,
+    string? FileHash
+);
+
+/// <summary>Type alias from using statement</summary>
+public record TypeAliasInfo(
+    long Id,
+    string FilePath,
+    string ShortName,
+    string FullName,
+    string? Namespace
+);
+
+// =========================================================================
+// Report Models for Harmony Conflicts
+// =========================================================================
+
+/// <summary>Harmony collision summary for reports</summary>
+public record HarmonyCollisionSummary(
+    string TargetClass,
+    string TargetMethod,
+    int ModCount,
+    List<string> Mods,
+    List<string> PatchTypes,
+    int TranspilerCount,
+    int SkipCapableCount,
+    string Severity
+);
+
+/// <summary>Transpiler conflict for reports</summary>
+public record TranspilerConflict(
+    string TargetClass,
+    string TargetMethod,
+    int TranspilerCount,
+    List<string> Mods,
+    string Reason
+);
+
+/// <summary>Skip conflict for reports</summary>
+public record SkipConflictInfo(
+    string TargetClass,
+    string TargetMethod,
+    string SkipMod,
+    string SkipClass,
+    int SkipPriority,
+    List<string> AffectedMods,
+    string Severity,
+    string Reason
+);
+
+/// <summary>Game code issue summary for reports</summary>
+public record GameCodeIssueSummary(
+    string AnalysisType,
+    string Severity,
+    string Confidence,
+    int IssueCount,
+    List<string> AffectedClasses
+);

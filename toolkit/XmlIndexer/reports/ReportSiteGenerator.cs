@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using XmlIndexer.Analysis;
 using XmlIndexer.Models;
 
 namespace XmlIndexer.Reports;
@@ -15,8 +16,9 @@ public static class ReportSiteGenerator
     /// <param name="db">Open database connection</param>
     /// <param name="outputDir">Base output directory</param>
     /// <param name="buildTimeMs">Build time in milliseconds (optional)</param>
+    /// <param name="gameCodebasePath">Path to decompiled game code (optional, enables game code analysis)</param>
     /// <returns>Path to the generated folder</returns>
-    public static string Generate(SqliteConnection db, string outputDir, long buildTimeMs = 0)
+    public static string Generate(SqliteConnection db, string outputDir, long buildTimeMs = 0, string? gameCodebasePath = null)
     {
         // Create timestamped folder
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
@@ -27,6 +29,37 @@ public static class ReportSiteGenerator
         Directory.CreateDirectory(assetsFolder);
 
         Console.WriteLine($"  Generating multi-page report in: {siteFolder}");
+
+        // Run Harmony conflict detection before report generation
+        Console.WriteLine("    ▶ Detecting Harmony conflicts...");
+        try
+        {
+            var harmonyReport = HarmonyConflictDetector.DetectAllConflicts(db);
+            if (harmonyReport.TotalConflicts > 0)
+            {
+                Console.WriteLine($"      Found {harmonyReport.TotalConflicts} Harmony conflicts ({harmonyReport.CriticalCount} critical)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"      Note: Harmony conflict detection skipped ({ex.Message})");
+        }
+
+        // Run game code analysis if codebase path provided
+        if (!string.IsNullOrEmpty(gameCodebasePath) && Directory.Exists(gameCodebasePath))
+        {
+            Console.WriteLine("    ▶ Analyzing game code...");
+            try
+            {
+                var gameAnalyzer = new GameCodeAnalyzer(db);
+                gameAnalyzer.AnalyzeGameCode(gameCodebasePath);
+                Console.WriteLine($"      Analyzed {gameAnalyzer.FilesAnalyzed} files, found {gameAnalyzer.FindingsTotal} issues");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      Note: Game code analysis skipped ({ex.Message})");
+            }
+        }
 
         // Gather all report data once
         var reportData = ReportDataCollector.GatherReportData(db);
@@ -45,8 +78,11 @@ public static class ReportSiteGenerator
         GeneratePage(siteFolder, "mods.html", () => ModPageGenerator.Generate(reportData, extendedData));
         GeneratePage(siteFolder, "conflicts.html", () => ConflictPageGenerator.Generate(reportData, extendedData));
         GeneratePage(siteFolder, "dependencies.html", () => DependencyPageGenerator.Generate(reportData, extendedData));
-        GeneratePage(siteFolder, "csharp.html", () => CSharpPageGenerator.Generate(reportData, extendedData));
+        GeneratePage(siteFolder, "csharp.html", () => CSharpPageGenerator.Generate(reportData, extendedData, db));
         GeneratePage(siteFolder, "glossary.html", () => GlossaryPageGenerator.Generate(reportData, extendedData));
+        
+        // Generate game code page (always generate, will show "no data" message if empty)
+        GeneratePage(siteFolder, "gamecode.html", () => GameCodePageGenerator.Generate(db));
 
         return siteFolder;
     }

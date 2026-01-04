@@ -536,5 +536,270 @@ public static class DatabaseBuilder
         WHERE o.effect_name IS NOT NULL
         GROUP BY o.effect_name, o.parent_entity, o.parent_entity_name
         HAVING COUNT(DISTINCT o.mod_id) > 1;
+
+        -- ============================================================================
+        -- HARMONY PATCH ANALYSIS TABLES
+        -- ============================================================================
+
+        -- Detailed Harmony patch metadata for conflict detection
+        CREATE TABLE harmony_patches (
+            id INTEGER PRIMARY KEY,
+            mod_id INTEGER NOT NULL,
+            patch_class TEXT NOT NULL,
+            target_class TEXT NOT NULL,
+            target_method TEXT NOT NULL,
+            patch_type TEXT NOT NULL,
+            target_member_kind TEXT,
+            target_arg_types TEXT,
+            target_declaring_type TEXT,
+            harmony_priority INTEGER DEFAULT 400,
+            harmony_before TEXT,
+            harmony_after TEXT,
+            returns_bool INTEGER DEFAULT 0,
+            modifies_result INTEGER DEFAULT 0,
+            modifies_state INTEGER DEFAULT 0,
+            is_guarded INTEGER DEFAULT 0,
+            guard_condition TEXT,
+            is_dynamic INTEGER DEFAULT 0,
+            parameter_signature TEXT,
+            code_snippet TEXT,
+            source_file TEXT,
+            line_number INTEGER,
+            FOREIGN KEY (mod_id) REFERENCES mods(id),
+            UNIQUE(mod_id, target_class, target_method, patch_type, patch_class)
+        );
+        CREATE INDEX idx_harmony_mod ON harmony_patches(mod_id);
+        CREATE INDEX idx_harmony_target ON harmony_patches(target_class, target_method);
+        CREATE INDEX idx_harmony_target_type ON harmony_patches(target_class, target_method, patch_type);
+        CREATE INDEX idx_harmony_priority ON harmony_patches(harmony_priority);
+
+        -- Detected Harmony patch conflicts between mods
+        CREATE TABLE harmony_conflicts (
+            id INTEGER PRIMARY KEY,
+            target_class TEXT NOT NULL,
+            target_method TEXT NOT NULL,
+            conflict_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            confidence TEXT NOT NULL,
+            mod1_id INTEGER,
+            mod2_id INTEGER,
+            patch1_id INTEGER,
+            patch2_id INTEGER,
+            same_signature INTEGER DEFAULT 1,
+            explanation TEXT,
+            reasoning TEXT,
+            FOREIGN KEY (mod1_id) REFERENCES mods(id),
+            FOREIGN KEY (mod2_id) REFERENCES mods(id),
+            FOREIGN KEY (patch1_id) REFERENCES harmony_patches(id),
+            FOREIGN KEY (patch2_id) REFERENCES harmony_patches(id)
+        );
+        CREATE INDEX idx_conflict_severity ON harmony_conflicts(severity);
+        CREATE INDEX idx_conflict_type ON harmony_conflicts(conflict_type);
+        CREATE INDEX idx_conflict_target ON harmony_conflicts(target_class, target_method);
+
+        -- ============================================================================
+        -- GAME CODE ANALYSIS TABLES
+        -- ============================================================================
+
+        -- Game code bug hunting findings
+        CREATE TABLE game_code_analysis (
+            id INTEGER PRIMARY KEY,
+            analysis_type TEXT NOT NULL,
+            class_name TEXT NOT NULL,
+            method_name TEXT,
+            severity TEXT NOT NULL,
+            confidence TEXT NOT NULL,
+            description TEXT,
+            reasoning TEXT,
+            code_snippet TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            potential_fix TEXT,
+            related_entities TEXT,
+            file_hash TEXT,
+            is_unity_magic INTEGER DEFAULT 0,
+            is_reflection_target INTEGER DEFAULT 0,
+            UNIQUE(file_path, line_number, analysis_type)
+        );
+        CREATE INDEX idx_analysis_type ON game_code_analysis(analysis_type);
+        CREATE INDEX idx_analysis_severity ON game_code_analysis(severity, confidence);
+        CREATE INDEX idx_analysis_file ON game_code_analysis(file_path);
+        CREATE INDEX idx_analysis_class ON game_code_analysis(class_name);
+
+        -- Cached game method signatures for overload matching
+        CREATE TABLE method_signatures (
+            id INTEGER PRIMARY KEY,
+            class_name TEXT NOT NULL,
+            method_name TEXT NOT NULL,
+            parameter_types TEXT NOT NULL,
+            parameter_types_full TEXT,
+            return_type TEXT,
+            return_type_full TEXT,
+            is_static INTEGER DEFAULT 0,
+            is_virtual INTEGER DEFAULT 0,
+            is_override INTEGER DEFAULT 0,
+            access_modifier TEXT,
+            declaring_class TEXT,
+            file_path TEXT,
+            file_hash TEXT,
+            UNIQUE(class_name, method_name, parameter_types)
+        );
+        CREATE INDEX idx_sig_class ON method_signatures(class_name);
+        CREATE INDEX idx_sig_method ON method_signatures(class_name, method_name);
+        CREATE INDEX idx_sig_declaring ON method_signatures(declaring_class);
+
+        -- Class inheritance hierarchy for base class patch detection
+        CREATE TABLE class_inheritance (
+            id INTEGER PRIMARY KEY,
+            class_name TEXT NOT NULL UNIQUE,
+            parent_class TEXT,
+            interfaces TEXT,
+            is_abstract INTEGER DEFAULT 0,
+            is_sealed INTEGER DEFAULT 0,
+            file_path TEXT,
+            file_hash TEXT
+        );
+        CREATE INDEX idx_inheritance_parent ON class_inheritance(parent_class);
+        CREATE INDEX idx_inheritance_class ON class_inheritance(class_name);
+
+        -- Type alias mapping from using statements
+        CREATE TABLE type_aliases (
+            id INTEGER PRIMARY KEY,
+            file_path TEXT NOT NULL,
+            short_name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            namespace TEXT,
+            UNIQUE(file_path, short_name)
+        );
+        CREATE INDEX idx_alias_short ON type_aliases(short_name);
+        CREATE INDEX idx_alias_file ON type_aliases(file_path);
+
+        -- ============================================================================
+        -- HARMONY CONFLICT DETECTION VIEWS
+        -- ============================================================================
+
+        -- v_harmony_collisions: Multiple mods patching same game method
+        CREATE VIEW v_harmony_collisions AS
+        SELECT
+            hp.target_class,
+            hp.target_method,
+            COUNT(DISTINCT hp.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name) as mods,
+            GROUP_CONCAT(DISTINCT hp.patch_type) as patch_types,
+            SUM(CASE WHEN hp.patch_type = 'Transpiler' THEN 1 ELSE 0 END) as transpiler_count,
+            SUM(CASE WHEN hp.returns_bool = 1 THEN 1 ELSE 0 END) as skip_capable_count,
+            CASE
+                WHEN SUM(CASE WHEN hp.patch_type = 'Transpiler' THEN 1 ELSE 0 END) > 1 THEN 'CRITICAL'
+                WHEN SUM(CASE WHEN hp.returns_bool = 1 THEN 1 ELSE 0 END) > 0
+                     AND COUNT(DISTINCT hp.mod_id) > 1 THEN 'HIGH'
+                WHEN COUNT(DISTINCT hp.mod_id) >= 3 THEN 'MEDIUM'
+                ELSE 'LOW'
+            END as severity
+        FROM harmony_patches hp
+        JOIN mods m ON hp.mod_id = m.id
+        GROUP BY hp.target_class, hp.target_method
+        HAVING COUNT(DISTINCT hp.mod_id) > 1;
+
+        -- v_transpiler_conflicts: Multiple transpilers on same method (almost always problematic)
+        CREATE VIEW v_transpiler_conflicts AS
+        SELECT
+            hp.target_class,
+            hp.target_method,
+            COUNT(*) as transpiler_count,
+            GROUP_CONCAT(m.name) as mods,
+            'CRITICAL' as severity,
+            'Multiple transpilers modifying same method IL - high chance of conflict' as reason
+        FROM harmony_patches hp
+        JOIN mods m ON hp.mod_id = m.id
+        WHERE hp.patch_type = 'Transpiler'
+        GROUP BY hp.target_class, hp.target_method
+        HAVING COUNT(*) > 1;
+
+        -- v_skip_conflicts: Prefix patches that can skip original + other patches exist
+        CREATE VIEW v_skip_conflicts AS
+        SELECT
+            hp1.target_class,
+            hp1.target_method,
+            m1.name as skip_mod,
+            hp1.patch_class as skip_class,
+            hp1.harmony_priority as skip_priority,
+            GROUP_CONCAT(DISTINCT m2.name) as affected_mods,
+            COUNT(DISTINCT hp2.mod_id) as affected_count,
+            CASE
+                WHEN hp1.harmony_priority > 400 THEN 'HIGH'
+                ELSE 'MEDIUM'
+            END as severity,
+            'Prefix can return false to skip original method and lower-priority patches' as reason
+        FROM harmony_patches hp1
+        JOIN harmony_patches hp2 ON hp1.target_class = hp2.target_class
+            AND hp1.target_method = hp2.target_method
+            AND hp1.id != hp2.id
+        JOIN mods m1 ON hp1.mod_id = m1.id
+        JOIN mods m2 ON hp2.mod_id = m2.id
+        WHERE hp1.returns_bool = 1
+        GROUP BY hp1.id;
+
+        -- v_harmony_priority_order: Shows execution order based on priority
+        CREATE VIEW v_harmony_priority_order AS
+        SELECT
+            hp.target_class,
+            hp.target_method,
+            hp.patch_type,
+            m.name as mod_name,
+            hp.patch_class,
+            hp.harmony_priority,
+            CASE hp.patch_type
+                WHEN 'Prefix' THEN ROW_NUMBER() OVER (
+                    PARTITION BY hp.target_class, hp.target_method, hp.patch_type
+                    ORDER BY hp.harmony_priority DESC)
+                WHEN 'Postfix' THEN ROW_NUMBER() OVER (
+                    PARTITION BY hp.target_class, hp.target_method, hp.patch_type
+                    ORDER BY hp.harmony_priority ASC)
+                ELSE ROW_NUMBER() OVER (
+                    PARTITION BY hp.target_class, hp.target_method, hp.patch_type
+                    ORDER BY hp.harmony_priority DESC)
+            END as execution_order,
+            hp.returns_bool,
+            hp.modifies_result
+        FROM harmony_patches hp
+        JOIN mods m ON hp.mod_id = m.id
+        ORDER BY hp.target_class, hp.target_method, hp.patch_type, execution_order;
+
+        -- v_guarded_patches: Patches with safety guards (lower false positive rate)
+        CREATE VIEW v_guarded_patches AS
+        SELECT
+            hp.target_class,
+            hp.target_method,
+            m.name as mod_name,
+            hp.patch_class,
+            hp.patch_type,
+            hp.guard_condition,
+            'Guarded patch - may not apply if guard condition fails' as note
+        FROM harmony_patches hp
+        JOIN mods m ON hp.mod_id = m.id
+        WHERE hp.is_guarded = 1;
+
+        -- v_game_code_issues: Summary of game code analysis findings
+        CREATE VIEW v_game_code_issues AS
+        SELECT
+            analysis_type,
+            severity,
+            confidence,
+            COUNT(*) as issue_count,
+            GROUP_CONCAT(DISTINCT class_name) as affected_classes
+        FROM game_code_analysis
+        GROUP BY analysis_type, severity, confidence
+        ORDER BY
+            CASE severity
+                WHEN 'BUG' THEN 1
+                WHEN 'WARNING' THEN 2
+                WHEN 'INFO' THEN 3
+                WHEN 'OPPORTUNITY' THEN 4
+            END,
+            CASE confidence
+                WHEN 'high' THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'low' THEN 3
+            END;
     ";
 }

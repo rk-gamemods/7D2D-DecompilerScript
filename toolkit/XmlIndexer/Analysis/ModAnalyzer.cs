@@ -238,6 +238,12 @@ public class ModAnalyzer
                 cmd.ExecuteNonQuery();
             }
 
+            // Scan and store detailed Harmony patches for conflict detection
+            if (hasDll)
+            {
+                ScanAndStoreHarmonyPatches(modDir, modName, modId, db);
+            }
+
             // Update mod summary
             using (var cmd = db.CreateCommand())
             {
@@ -801,5 +807,97 @@ public class ModAnalyzer
                 Console.WriteLine();
             }
         }
+    }
+
+    /// <summary>
+    /// Scans decompiled mod DLLs for detailed Harmony patch information and stores in database.
+    /// </summary>
+    private void ScanAndStoreHarmonyPatches(string modDir, string modName, long modId, SqliteConnection db)
+    {
+        var modDlls = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
+            .Where(dll => !Path.GetFileName(dll).StartsWith("0Harmony", StringComparison.OrdinalIgnoreCase))
+            .Where(dll => !Path.GetFileName(dll).Equals("Mono.Cecil.dll", StringComparison.OrdinalIgnoreCase))
+            .Where(dll => !Path.GetFileName(dll).Contains("System."))
+            .Where(dll => !Path.GetFileName(dll).Contains("Microsoft."))
+            .ToList();
+        
+        if (modDlls.Count == 0) return;
+
+        int totalPatches = 0;
+        foreach (var dllPath in modDlls)
+        {
+            var csFiles = CSharpAnalyzer.DecompileModDll(dllPath, modName);
+            if (csFiles.Count == 0) continue;
+
+            foreach (var csFile in csFiles)
+            {
+                try
+                {
+                    var content = File.ReadAllText(csFile);
+                    var fileName = Path.GetFileName(csFile);
+
+                    // Use detailed Harmony patch scanning
+                    var patches = CSharpAnalyzer.ScanHarmonyPatchesDetailed(content, modId, fileName);
+
+                    foreach (var patch in patches)
+                    {
+                        PersistHarmonyPatch(db, patch);
+                        totalPatches++;
+                    }
+                }
+                catch { /* Skip unreadable files */ }
+            }
+        }
+        
+        if (totalPatches > 0)
+        {
+            Console.WriteLine($"      Found {totalPatches} Harmony patches in {modName}");
+        }
+    }
+
+    /// <summary>
+    /// Persists a single Harmony patch to the database.
+    /// </summary>
+    private void PersistHarmonyPatch(SqliteConnection db, HarmonyPatchInfo patch)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR REPLACE INTO harmony_patches
+            (mod_id, patch_class, target_class, target_method, patch_type,
+             target_member_kind, target_arg_types, target_declaring_type,
+             harmony_priority, harmony_before, harmony_after,
+             returns_bool, modifies_result, modifies_state,
+             is_guarded, guard_condition, is_dynamic,
+             parameter_signature, code_snippet, source_file, line_number)
+            VALUES ($modId, $patchClass, $targetClass, $targetMethod, $patchType,
+                    $memberKind, $argTypes, $declaringType,
+                    $priority, $before, $after,
+                    $returnsBool, $modifiesResult, $modifiesState,
+                    $isGuarded, $guardCondition, $isDynamic,
+                    $paramSig, $snippet, $file, $line)";
+
+        cmd.Parameters.AddWithValue("$modId", patch.ModId);
+        cmd.Parameters.AddWithValue("$patchClass", patch.PatchClass);
+        cmd.Parameters.AddWithValue("$targetClass", patch.TargetClass);
+        cmd.Parameters.AddWithValue("$targetMethod", patch.TargetMethod);
+        cmd.Parameters.AddWithValue("$patchType", patch.PatchType);
+        cmd.Parameters.AddWithValue("$memberKind", patch.TargetMemberKind ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$argTypes", patch.TargetArgTypes ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$declaringType", patch.TargetDeclaringType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$priority", patch.HarmonyPriority);
+        cmd.Parameters.AddWithValue("$before", patch.HarmonyBefore ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$after", patch.HarmonyAfter ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$returnsBool", patch.ReturnsBool ? 1 : 0);
+        cmd.Parameters.AddWithValue("$modifiesResult", patch.ModifiesResult ? 1 : 0);
+        cmd.Parameters.AddWithValue("$modifiesState", patch.ModifiesState ? 1 : 0);
+        cmd.Parameters.AddWithValue("$isGuarded", patch.IsGuarded ? 1 : 0);
+        cmd.Parameters.AddWithValue("$guardCondition", patch.GuardCondition ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$isDynamic", patch.IsDynamic ? 1 : 0);
+        cmd.Parameters.AddWithValue("$paramSig", patch.ParameterSignature ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$snippet", patch.CodeSnippet ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$file", patch.SourceFile ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$line", patch.LineNumber ?? (object)DBNull.Value);
+
+        cmd.ExecuteNonQuery();
     }
 }
