@@ -201,12 +201,29 @@ public static class DatabaseBuilder
             element_content TEXT,
             file_path TEXT,
             line_number INTEGER,
-            impact_status TEXT
+            impact_status TEXT,
+            -- Passive effect context
+            effect_name TEXT,           -- Extracted from xpath (e.g., 'CarryCapacity')
+            effect_operation TEXT,      -- The passive_effect operation (perc_add, base_set, etc.)
+            effect_value_type TEXT,     -- 'base' or 'perc'
+            is_set_operation INTEGER,   -- 1 if base_set/perc_set, 0 otherwise
+            parent_entity TEXT,         -- The entity/buff/item containing this effect
+            parent_entity_name TEXT,    -- The specific name (e.g., 'playerMale', 'buffGodMode')
+            -- Triggered effect context
+            is_triggered_effect INTEGER,-- 1 if this modifies a triggered_effect
+            trigger_action TEXT,        -- ModifyCVar, AddBuff, etc.
+            trigger_cvar TEXT,          -- Target CVar name (e.g., '$damage')
+            trigger_operation TEXT,     -- set, add, multiply, subtract
+            -- Modification tracking
+            modifies_operation INTEGER, -- 1 if xpath targets @operation
+            modifies_value INTEGER      -- 1 if xpath targets @value
         );
         CREATE INDEX idx_modxml_mod ON mod_xml_operations(mod_id);
         CREATE INDEX idx_modxml_target ON mod_xml_operations(target_type, target_name);
         CREATE INDEX idx_modxml_xpath_hash ON mod_xml_operations(xpath_hash);
         CREATE INDEX idx_modxml_xpath_hash_op ON mod_xml_operations(xpath_hash, operation);
+        CREATE INDEX idx_modxml_effect ON mod_xml_operations(effect_name, parent_entity_name);
+        CREATE INDEX idx_modxml_trigger ON mod_xml_operations(trigger_cvar);
 
         CREATE TABLE mod_csharp_deps (
             id INTEGER PRIMARY KEY,
@@ -215,7 +232,8 @@ public static class DatabaseBuilder
             dependency_name TEXT NOT NULL,
             source_file TEXT,
             line_number INTEGER,
-            pattern TEXT
+            pattern TEXT,
+            code_snippet TEXT
         );
         CREATE INDEX idx_csdep_mod ON mod_csharp_deps(mod_id);
         CREATE INDEX idx_csdep_target ON mod_csharp_deps(dependency_type, dependency_name);
@@ -361,5 +379,162 @@ public static class DatabaseBuilder
           AND (SELECT COUNT(DISTINCT o3.mod_id)
                FROM mod_xml_operations o3
                WHERE o3.xpath_hash = o.xpath_hash AND o3.operation = o.operation) > 1;
+
+        -- ============================================================================
+        -- EFFECT-LEVEL CONFLICT DETECTION VIEWS
+        -- ============================================================================
+
+        -- v_effect_operation_conflicts: Different operation types on same effect (HIGH)
+        CREATE VIEW v_effect_operation_conflicts AS
+        SELECT
+            o1.effect_name,
+            o1.parent_entity_name,
+            m1.name as mod1,
+            o1.new_value as mod1_operation,
+            m2.name as mod2,
+            o2.new_value as mod2_operation,
+            'HIGH' as severity,
+            'Different math operations on same effect' as reason
+        FROM mod_xml_operations o1
+        JOIN mod_xml_operations o2
+            ON o1.effect_name = o2.effect_name
+            AND o1.parent_entity_name = o2.parent_entity_name
+        JOIN mods m1 ON o1.mod_id = m1.id
+        JOIN mods m2 ON o2.mod_id = m2.id
+        WHERE o1.modifies_operation = 1
+          AND o2.modifies_operation = 1
+          AND o1.new_value != o2.new_value
+          AND o1.mod_id < o2.mod_id
+          AND o1.new_value IN ('perc_add','perc_set','base_add','base_set','perc_subtract','base_subtract')
+          AND o2.new_value IN ('perc_add','perc_set','base_add','base_set','perc_subtract','base_subtract');
+
+        -- v_set_overrides_add: SET operations nullifying ADD operations (HIGH)
+        CREATE VIEW v_set_overrides_add AS
+        SELECT
+            o1.effect_name,
+            o1.parent_entity_name,
+            m1.name as add_mod,
+            o1.effect_operation as add_operation,
+            o1.new_value as add_value,
+            m2.name as set_mod,
+            o2.effect_operation as set_operation,
+            o2.new_value as set_value,
+            m1.load_order as add_load_order,
+            m2.load_order as set_load_order,
+            CASE WHEN m2.load_order > m1.load_order THEN 'SET_WINS' ELSE 'ADD_APPLIED_AFTER' END as outcome,
+            'HIGH' as severity
+        FROM mod_xml_operations o1
+        JOIN mod_xml_operations o2
+            ON o1.effect_name = o2.effect_name
+            AND o1.parent_entity_name = o2.parent_entity_name
+        JOIN mods m1 ON o1.mod_id = m1.id
+        JOIN mods m2 ON o2.mod_id = m2.id
+        WHERE o1.effect_operation LIKE '%_add%'
+          AND o2.effect_operation LIKE '%_set%'
+          AND o1.mod_id != o2.mod_id;
+
+        -- v_synergistic_stacking: ANY 2+ mods modifying same effect (MEDIUM)
+        CREATE VIEW v_synergistic_stacking AS
+        SELECT
+            o.effect_name,
+            o.parent_entity_name,
+            o.effect_operation,
+            COUNT(DISTINCT o.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name) as mods,
+            GROUP_CONCAT(DISTINCT m.name || '=' || COALESCE(o.new_value, '?')) as mod_values,
+            'MEDIUM' as severity,
+            'Multiple mods modifying same effect - values may stack' as reason
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.effect_name IS NOT NULL
+          AND o.effect_operation IS NOT NULL
+        GROUP BY o.effect_name, o.parent_entity_name, o.effect_operation
+        HAVING COUNT(DISTINCT o.mod_id) > 1;
+
+        -- v_mixed_modifier_interaction: Different mods using base vs perc on same effect (MEDIUM)
+        CREATE VIEW v_mixed_modifier_interaction AS
+        SELECT
+            o.effect_name,
+            o.parent_entity_name,
+            COUNT(DISTINCT o.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name || ':' || o.effect_operation) as mod_operations,
+            SUM(CASE WHEN o.effect_value_type = 'base' THEN 1 ELSE 0 END) as base_mod_count,
+            SUM(CASE WHEN o.effect_value_type = 'perc' THEN 1 ELSE 0 END) as perc_mod_count,
+            'MEDIUM' as severity,
+            'Mixed base and percentage modifiers may amplify unexpectedly' as reason
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.effect_name IS NOT NULL
+          AND o.effect_value_type IS NOT NULL
+        GROUP BY o.effect_name, o.parent_entity_name
+        HAVING COUNT(DISTINCT o.effect_value_type) > 1
+           AND COUNT(DISTINCT o.mod_id) > 1;
+
+        -- v_triggered_effect_conflicts: CVar modifications from multiple mods
+        CREATE VIEW v_triggered_effect_conflicts AS
+        SELECT
+            o.trigger_cvar,
+            o.trigger_operation,
+            COUNT(DISTINCT o.mod_id) as mod_count,
+            GROUP_CONCAT(DISTINCT m.name) as mods,
+            GROUP_CONCAT(DISTINCT m.name || ':' || o.trigger_operation || '=' || COALESCE(o.new_value, '?')) as details,
+            CASE
+                WHEN o.trigger_operation = 'multiply' AND COUNT(DISTINCT o.mod_id) > 1 THEN 'HIGH'
+                WHEN COUNT(DISTINCT CASE WHEN o.trigger_operation = 'set' THEN o.mod_id END) > 0
+                     AND COUNT(DISTINCT CASE WHEN o.trigger_operation != 'set' THEN o.mod_id END) > 0 THEN 'MEDIUM'
+                ELSE 'LOW'
+            END as severity,
+            'Multiple mods modifying same CVar' as reason
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.is_triggered_effect = 1
+          AND o.trigger_cvar IS NOT NULL
+        GROUP BY o.trigger_cvar, o.trigger_operation
+        HAVING COUNT(DISTINCT o.mod_id) > 1;
+
+        -- v_partial_modifications: Mods changing @operation or @value but not both (MEDIUM)
+        CREATE VIEW v_partial_modifications AS
+        SELECT
+            o.effect_name,
+            o.parent_entity_name,
+            m.name as mod_name,
+            o.modifies_operation,
+            o.modifies_value,
+            o.file_path,
+            o.line_number,
+            'MEDIUM' as severity,
+            CASE
+                WHEN o.modifies_operation = 1 AND COALESCE(o.modifies_value, 0) = 0 THEN 'Changes @operation without @value'
+                WHEN COALESCE(o.modifies_operation, 0) = 0 AND o.modifies_value = 1 THEN 'Changes @value without @operation'
+            END as reason
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.effect_name IS NOT NULL
+          AND ((o.modifies_operation = 1 AND COALESCE(o.modifies_value, 0) = 0)
+               OR (COALESCE(o.modifies_operation, 0) = 0 AND o.modifies_value = 1));
+
+        -- v_effect_summary: Complete view of all modifications to each effect
+        CREATE VIEW v_effect_summary AS
+        SELECT
+            o.effect_name,
+            o.parent_entity,
+            o.parent_entity_name,
+            COUNT(DISTINCT o.mod_id) as total_mods,
+            GROUP_CONCAT(DISTINCT m.name || ':' || COALESCE(o.effect_operation, 'unknown')) as mod_operations,
+            SUM(CASE WHEN o.effect_operation LIKE '%_set%' THEN 1 ELSE 0 END) as set_count,
+            SUM(CASE WHEN o.effect_operation LIKE '%_add%' THEN 1 ELSE 0 END) as add_count,
+            SUM(CASE WHEN o.effect_operation LIKE 'perc_%' THEN 1 ELSE 0 END) as perc_count,
+            SUM(CASE WHEN o.effect_operation LIKE 'base_%' THEN 1 ELSE 0 END) as base_count,
+            CASE
+                WHEN SUM(CASE WHEN o.effect_operation LIKE '%_set%' THEN 1 ELSE 0 END) > 0
+                     AND SUM(CASE WHEN o.effect_operation LIKE '%_add%' THEN 1 ELSE 0 END) > 0 THEN 'HIGH'
+                WHEN COUNT(DISTINCT o.mod_id) >= 3 THEN 'MEDIUM'
+                ELSE 'LOW'
+            END as risk_level
+        FROM mod_xml_operations o
+        JOIN mods m ON o.mod_id = m.id
+        WHERE o.effect_name IS NOT NULL
+        GROUP BY o.effect_name, o.parent_entity, o.parent_entity_name
+        HAVING COUNT(DISTINCT o.mod_id) > 1;
     ";
 }
