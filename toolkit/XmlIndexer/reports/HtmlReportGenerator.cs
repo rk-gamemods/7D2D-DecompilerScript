@@ -33,6 +33,7 @@ public static class HtmlReportGenerator
 <main>
     {GenerateHeader()}
     {GenerateStatsBar(data)}
+    {GenerateDependencyChainSection(data)}
     {GenerateDefinitionsByType(data)}
     {GenerateXmlOperations(data)}
     {GenerateCSharpAnalysis(data)}
@@ -122,6 +123,24 @@ public static class HtmlReportGenerator
         .sec { font-size: var(--fs-sm); font-weight: 600; margin: var(--s4) 0 var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: var(--s3); }
         .sec .n { font-size: var(--fs-xs); color: var(--dim); background: var(--card); padding: 0 5px; border-radius: 8px; }
         
+        /* Dependency chain visualization */
+        .chain-visual { padding: var(--s2) 0; }
+        .chain-step { display: flex; align-items: center; gap: var(--s2); padding: 2px 0; font-size: var(--fs-sm); }
+        .chain-arrow { color: var(--cyan); font-family: monospace; min-width: 14px; }
+        .chain-via { color: var(--dim); font-size: var(--fs-xs); padding: 1px 4px; background: var(--card); border-radius: 2px; cursor: help; margin-left: var(--s2); }
+        .chain-via:hover { background: var(--border); color: var(--muted); }
+        .chain-path { font-size: var(--fs-xs); color: var(--dim); margin-left: 20px; padding: 2px 0; }
+        .entity-link { color: var(--cyan); text-decoration: none; }
+        .entity-link:hover { text-decoration: underline; background: rgba(110,231,183,0.1); padding: 1px 2px; border-radius: 2px; }
+        .entity-link .tag { margin-right: 2px; }
+        
+        /* Smooth scroll for anchor links */
+        html { scroll-behavior: smooth; }
+        
+        /* Highlight target when navigating */
+        :target { animation: highlight 2s ease; }
+        @keyframes highlight { 0%, 50% { background: rgba(110,231,183,0.2); } 100% { background: transparent; } }
+        
         /* Grid facts */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2); font-size: var(--fs-sm); }
         .grid > div { padding: var(--s2) var(--s3); border: 1px solid var(--border); background: transparent; border-radius: 2px; }
@@ -152,6 +171,7 @@ public static class HtmlReportGenerator
         return $@"<nav>
     <div class=""t"">Sections</div>
     <a href=""#dashboard"">Dashboard</a>
+    <a href=""#dependencies"">Dependencies</a>
     <a href=""#mods"">Mods ({data.TotalMods})</a>
     <a href=""#health"">Health</a>
     <a href=""#conflicts"">Conflicts</a>
@@ -173,11 +193,201 @@ public static class HtmlReportGenerator
         <div><b>{data.TotalDefinitions:N0}</b><span>Game Definitions</span></div>
         <div><b>{data.TotalProperties:N0}</b><span>Properties</span></div>
         <div><b>{data.TotalReferences:N0}</b><span>Cross-References</span></div>
+        <div><b>{data.TotalTransitiveRefs:N0}</b><span>Transitive Refs</span></div>
         <div><b>{data.TotalMods}</b><span>Mods</span></div>
         <div><b>{data.XmlMods}</b><span>XML-Only</span></div>
         <div><b>{data.CSharpMods}</b><span>C# Code</span></div>
         <div><b>{data.HybridMods}</b><span>Hybrid</span></div>
     </div>";
+    }
+
+    private static string GenerateDependencyChainSection(ReportData data)
+    {
+        if (data.TotalTransitiveRefs == 0)
+        {
+            return @"<div class=""sec"" id=""dependencies"">Entity Dependencies <span class=""n"">not built</span></div>
+            <div class=""alert"">Run <code>XmlIndexer build-dependency-graph ecosystem.db</code> to compute transitive dependencies.</div>";
+        }
+
+        var sb = new StringBuilder();
+        
+        // Section header
+        sb.AppendLine($@"<div class=""sec"" id=""dependencies"">Entity Dependencies <span class=""n"">{data.TotalTransitiveRefs:N0} chains</span></div>");
+        
+        // Explanation with tooltip glossary
+        sb.AppendLine(@"<div class=""alert""><b>What is this?</b> Transitive dependencies show the complete chain of what each entity depends on.
+        If a mod changes a parent entity, all children are affected even if they weren't directly touched.
+        <details style=""margin-top:var(--s2);""><summary style=""background:transparent;border:none;padding:0;color:var(--cyan);font-size:var(--fs-xs);"">📖 Glossary of connection types</summary>
+        <div style=""margin-top:var(--s2);font-size:var(--fs-xs);color:var(--muted);"">
+            <b style=""color:var(--cyan);"">extends</b> — This entity inherits all properties from a parent (like a template). Changes to the parent affect this entity.<br/>
+            <b style=""color:var(--cyan);"">extends,property</b> — Inherits from parent AND directly references another entity in a property value.<br/>
+            <b style=""color:var(--cyan);"">triggered_effect:AddBuff</b> — This entity triggers/applies a buff when used or activated.<br/>
+            <b style=""color:var(--cyan);"">triggered_effect:RemoveBuff</b> — This entity removes a buff when used (like coffee removing drunk).<br/>
+            <b style=""color:var(--cyan);"">property:HandItem</b> — This entity uses another item when held (what weapon an NPC uses).<br/>
+            <b style=""color:var(--cyan);"">loot_entry</b> — This loot table/group can drop this item.<br/>
+            <b style=""color:var(--cyan);"">recipe_ingredient</b> — This item is needed to craft something.<br/>
+            <b style=""color:var(--cyan);"">recipe_output</b> — This is what a recipe produces.<br/>
+            <b style=""color:var(--cyan);"">group_member</b> — This entity belongs to a spawn group (like ZombiesAll).<br/>
+        </div></details></div>");
+
+        // Inheritance hotspots
+        if (data.InheritanceHotspots.Any())
+        {
+            var hotspotsRows = new StringBuilder();
+            foreach (var h in data.InheritanceHotspots.Take(15))
+            {
+                var riskClass = h.RiskLevel switch { "CRITICAL" => "err", "HIGH" => "warn", _ => "ok" };
+                var dependentLinks = string.Join(", ", h.TopDependents.Take(3).Select(d => 
+                    $"<a href=\"#entity-{HttpUtility.UrlEncode(d)}\" class=\"entity-link\">{HttpUtility.HtmlEncode(d)}</a>"));
+                hotspotsRows.AppendLine($@"<tr>
+                    <td><a href=""#entity-{HttpUtility.UrlEncode(h.EntityName)}"" class=""entity-link""><span class=""tag"">{h.EntityType}</span> {HttpUtility.HtmlEncode(h.EntityName)}</a></td>
+                    <td><b class=""{riskClass}"">{h.DependentCount}</b></td>
+                    <td><span class=""{riskClass}"">{h.RiskLevel}</span></td>
+                    <td style=""font-size:var(--fs-xs);"">{dependentLinks}{(h.TopDependents.Count > 3 ? " ..." : "")}</td>
+                </tr>");
+            }
+            
+            sb.AppendLine($@"<details open>
+                <summary>⚠️ Inheritance Hotspots <span class=""n"">most dangerous to modify</span></summary>
+                <div class=""body"">
+                    <p style=""color:var(--dim);margin-bottom:var(--s3);"">These are ""template"" entities that many others inherit from. Changing them ripples out to all their children.</p>
+                    <table>
+                        <tr><th>Entity</th><th title=""Number of entities that inherit from or depend on this"">Dependents</th><th title=""How risky is it to modify this entity?"">Risk</th><th>Example Dependents</th></tr>
+                        {hotspotsRows}
+                    </table>
+                </div>
+            </details>");
+        }
+
+        // Sample dependency chains with drill-down
+        if (data.SampleDependencyChains.Any())
+        {
+            var chainsHtml = new StringBuilder();
+            foreach (var chain in data.SampleDependencyChains)
+            {
+                var dependsOnHtml = new StringBuilder();
+                if (chain.DependsOn.Any())
+                {
+                    dependsOnHtml.AppendLine(@"<div style=""margin-top:var(--s2);""><b style=""color:var(--cyan);"">↓ THIS ENTITY DEPENDS ON (inheritance chain):</b></div>");
+                    dependsOnHtml.AppendLine(@"<div class=""chain-visual"">");
+                    
+                    // Show as a visual chain instead of a table
+                    foreach (var dep in chain.DependsOn)
+                    {
+                        var pathSteps = ParsePathJson(dep.PathJson);
+                        var tooltipText = GetConnectionTooltip(dep.ReferenceTypes);
+                        
+                        dependsOnHtml.AppendLine($@"<div class=""chain-step"" style=""margin-left:{dep.Depth * 16}px;"">
+                            <span class=""chain-arrow"">{'→'}</span>
+                            <a href=""#entity-{HttpUtility.UrlEncode(dep.EntityName)}"" class=""entity-link"" id=""entity-{HttpUtility.UrlEncode(dep.EntityName)}"">
+                                <span class=""tag"">{dep.EntityType}</span> {HttpUtility.HtmlEncode(dep.EntityName)}
+                            </a>
+                            <span class=""chain-via"" title=""{HttpUtility.HtmlEncode(tooltipText)}"">{HttpUtility.HtmlEncode(dep.ReferenceTypes)}</span>
+                            {(pathSteps.Count > 0 ? $"<div class=\"chain-path\">{string.Join(" → ", pathSteps.Select(s => HttpUtility.HtmlEncode(s)))}</div>" : "")}
+                        </div>");
+                    }
+                    dependsOnHtml.AppendLine("</div>");
+                }
+
+                var dependedByHtml = new StringBuilder();
+                if (chain.DependedOnBy.Any())
+                {
+                    dependedByHtml.AppendLine(@"<div style=""margin-top:var(--s3);""><b style=""color:var(--purple);"">↑ ENTITIES THAT DEPEND ON THIS (would break if this changes):</b></div>");
+                    dependedByHtml.AppendLine(@"<div class=""chain-visual"">");
+                    
+                    foreach (var dep in chain.DependedOnBy.Take(15))
+                    {
+                        var tooltipText = GetConnectionTooltip(dep.ReferenceTypes);
+                        
+                        dependedByHtml.AppendLine($@"<div class=""chain-step"">
+                            <span class=""chain-arrow"" style=""color:var(--purple);"">←</span>
+                            <a href=""#entity-{HttpUtility.UrlEncode(dep.EntityName)}"" class=""entity-link"">
+                                <span class=""tag"">{dep.EntityType}</span> {HttpUtility.HtmlEncode(dep.EntityName)}
+                            </a>
+                            <span class=""chain-via"" title=""{HttpUtility.HtmlEncode(tooltipText)}"">{HttpUtility.HtmlEncode(dep.ReferenceTypes)}</span>
+                        </div>");
+                    }
+                    if (chain.DependedOnBy.Count > 15)
+                        dependedByHtml.AppendLine($@"<div class=""chain-step"" style=""color:var(--dim);"">... and {chain.DependedOnBy.Count - 15} more entities depend on this</div>");
+                    dependedByHtml.AppendLine("</div>");
+                }
+
+                var extendsNote = !string.IsNullOrEmpty(chain.ExtendsFrom) 
+                    ? $" <span style=\"color:var(--dim);\">inherits from <a href=\"#entity-{HttpUtility.UrlEncode(chain.ExtendsFrom)}\" class=\"entity-link\">{HttpUtility.HtmlEncode(chain.ExtendsFrom)}</a></span>" 
+                    : "";
+
+                chainsHtml.AppendLine($@"<details id=""entity-{HttpUtility.UrlEncode(chain.EntityName)}"">
+                    <summary><span class=""tag"">{chain.EntityType}</span> {HttpUtility.HtmlEncode(chain.EntityName)}{extendsNote}</summary>
+                    <div class=""body"">
+                        <div style=""color:var(--dim);font-size:var(--fs-xs);margin-bottom:var(--s2);"">📁 {HttpUtility.HtmlEncode(chain.FilePath)}</div>
+                        {dependsOnHtml}
+                        {dependedByHtml}
+                    </div>
+                </details>");
+            }
+
+            sb.AppendLine($@"<details open>
+                <summary>🔗 Entity Dependency Chains <span class=""n"">click to explore connections</span></summary>
+                <div class=""body"">
+                    <p style=""color:var(--dim);margin-bottom:var(--s3);"">Click any entity name to jump to its details. The chain shows the full path of how entities connect.</p>
+                    {chainsHtml}
+                </div>
+            </details>");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>Parse path_json into readable steps</summary>
+    private static List<string> ParsePathJson(string pathJson)
+    {
+        if (string.IsNullOrEmpty(pathJson) || pathJson == "[]") return new List<string>();
+        try
+        {
+            // Simple JSON array parsing - format is ["step1", "step2", ...]
+            var clean = pathJson.Trim('[', ']');
+            if (string.IsNullOrEmpty(clean)) return new List<string>();
+            return clean.Split(',')
+                .Select(s => s.Trim().Trim('"'))
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
+        }
+        catch { return new List<string>(); }
+    }
+
+    /// <summary>Get human-readable tooltip for connection type</summary>
+    private static string GetConnectionTooltip(string refTypes)
+    {
+        if (string.IsNullOrEmpty(refTypes)) return "Connection type unknown";
+        
+        var parts = refTypes.Split(',').Select(p => p.Trim()).ToList();
+        var explanations = new List<string>();
+        
+        foreach (var part in parts)
+        {
+            var explanation = part switch
+            {
+                "extends" => "Inherits all properties from parent entity",
+                "property" => "References this entity in a property value",
+                "triggered_effect:AddBuff" => "Applies this buff when activated",
+                "triggered_effect:RemoveBuff" => "Removes this buff when activated",
+                "triggered_effect:PlaySound" => "Plays this sound when triggered",
+                "property:HandItem" => "Uses this item when in hand",
+                "property:BuffOnEat" => "Applies this buff when consumed",
+                "property:SpawnEntityName" => "Spawns this entity",
+                "property:LootListOnDeath" => "Drops loot from this table on death",
+                "loot_entry" => "Can drop this item as loot",
+                "recipe_ingredient" => "Required as crafting ingredient",
+                "recipe_output" => "Produced by a recipe",
+                "group_member" => "Belongs to this spawn group",
+                _ when part.StartsWith("property:") => $"References in {part.Replace("property:", "")} property",
+                _ when part.StartsWith("triggered_effect:") => $"Triggers {part.Replace("triggered_effect:", "")} effect",
+                _ => part
+            };
+            explanations.Add(explanation);
+        }
+        
+        return string.Join("; ", explanations);
     }
 
     private static string GenerateDefinitionsByType(ReportData data)
