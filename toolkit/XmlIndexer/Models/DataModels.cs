@@ -14,7 +14,7 @@ public record XmlProperty(long DefId, string Name, string? Value, string? Class,
 public record XmlReference(string SrcType, long? SrcDefId, string SrcFile, int Line, string TgtType, string TgtName, string Context);
 
 /// <summary>C# mod dependency on game code</summary>
-public record CSharpDependency(string ModName, string Type, string Name, string SourceFile, int Line, string Pattern);
+public record CSharpDependency(string ModName, string Type, string Name, string SourceFile, int Line, string Pattern, string? CodeSnippet = null);
 
 // =========================================================================
 // Mod Analysis Models
@@ -62,7 +62,11 @@ public record ReportData(
     // Most invasive mods
     List<InvasiveMod> MostInvasiveMods,
     // Property conflicts
-    List<PropertyConflict> PropertyConflicts
+    List<PropertyConflict> PropertyConflicts,
+    // Dependency chain data (new)
+    int TotalTransitiveRefs,
+    List<InheritanceHotspot> InheritanceHotspots,
+    List<EntityDependencyInfo> SampleDependencyChains
 );
 
 /// <summary>Entity with interconnection score (references to/from others)</summary>
@@ -95,21 +99,35 @@ public record PropertyConflict(
 /// <summary>User-friendly mod summary</summary>
 public record ModInfo(
     string Name,
+    int LoadOrder,
     int XmlOps,
     int CSharpDeps,
     int Removes,
     string ModType,
     string Health,
-    string HealthNote
+    string HealthNote,
+    string? FolderName = null
 );
 
 /// <summary>Detailed contested entity with risk assessment</summary>
 public record ContestedEntity(
     string EntityType,
     string EntityName,
-    List<(string ModName, string Operation)> ModActions,
+    List<ConflictModAction> ModActions,
     string RiskLevel,
     string RiskReason
+);
+
+/// <summary>Detailed mod action in a conflict - includes XPath, property, and value context</summary>
+public record ConflictModAction(
+    string ModName,
+    string Operation,
+    string? XPath,
+    string? PropertyName,
+    string? NewValue,
+    string? ElementContent,
+    string? FilePath,
+    int? LineNumber
 );
 
 /// <summary>Human-readable behavioral analysis for a mod</summary>
@@ -132,6 +150,39 @@ public record ModXmlInfo(
 );
 
 // =========================================================================
+// Dependency Chain Models (for impact analysis drill-down)
+// =========================================================================
+
+/// <summary>Entity that many others depend on (inheritance hotspot)</summary>
+public record InheritanceHotspot(
+    string EntityType,
+    string EntityName,
+    int DependentCount,
+    string RiskLevel,
+    List<string> TopDependents
+);
+
+/// <summary>Full dependency chain for an entity with drill-down details</summary>
+public record DependencyChainEntry(
+    string EntityType,
+    string EntityName,
+    int Depth,
+    string ReferenceTypes,
+    string FilePath,
+    string PathJson  // Full path chain as JSON array
+);
+
+/// <summary>Entity with its complete dependency context for drill-down</summary>
+public record EntityDependencyInfo(
+    string EntityType,
+    string EntityName,
+    string FilePath,
+    string? ExtendsFrom,
+    List<DependencyChainEntry> DependsOn,
+    List<DependencyChainEntry> DependedOnBy
+);
+
+// =========================================================================
 // Semantic Trace Models (for LLM export/import)
 // =========================================================================
 
@@ -147,4 +198,117 @@ public record SemanticTrace(
 );
 
 /// <summary>XPath target extraction result</summary>
-public record XPathTarget(string Type, string Name);
+/// <param name="Type">Entity type (item, block, loot_container, etc.)</param>
+/// <param name="Name">Entity name if found via @name selector, or selector description</param>
+/// <param name="SelectorAttribute">The attribute used to select (e.g., "name", "size", "id")</param>
+/// <param name="SelectorValue">The value in the selector</param>
+/// <param name="IsFragile">True if selection is NOT by @name - may be fragile/unreliable</param>
+public record XPathTarget(string Type, string Name, string SelectorAttribute = "name", string? SelectorValue = null, bool IsFragile = false);
+
+// =========================================================================
+// Extended Report Data Models (for multi-page HTML reports)
+// =========================================================================
+
+/// <summary>Extended data for multi-page reports - gathered once and passed to all page generators</summary>
+public record ExtendedReportData(
+    List<EntityExport> AllEntities,
+    List<ReferenceExport> AllReferences,
+    List<TransitiveExport> AllTransitiveRefs,
+    List<ModDetailExport> ModDetails,
+    List<CallGraphNode> CallGraphNodes,
+    List<EventFlowEdge> EventFlowData,
+    Dictionary<string, int> ReferenceTypeCounts
+);
+
+/// <summary>Entity export for JSON embedding in entity page</summary>
+public record EntityExport(
+    string Type,
+    string Name,
+    string? FilePath,
+    int Line,
+    string? Extends,
+    int PropertyCount,
+    int ReferenceCount,
+    List<PropertyExport>? Properties
+);
+
+/// <summary>Property export for entity details</summary>
+public record PropertyExport(string Name, string? Value, string? Class);
+
+/// <summary>Reference export for JSON embedding</summary>
+public record ReferenceExport(
+    string SourceType,
+    string SourceName,
+    string TargetType,
+    string TargetName,
+    string Context
+);
+
+/// <summary>Transitive reference export</summary>
+public record TransitiveExport(
+    string SourceType,
+    string SourceName,
+    string TargetType,
+    string TargetName,
+    int Depth,
+    string ReferenceTypes
+);
+
+/// <summary>Detailed mod export for mods page</summary>
+public record ModDetailExport(
+    string ModName,
+    List<XmlOperationExport> XmlOperations,
+    List<HarmonyPatchExport> HarmonyPatches,
+    List<ClassExtensionExport> ClassExtensions,
+    List<CSharpEntityDependency>? EntityDependencies = null,
+    Dictionary<string, int>? EntityTypeBreakdown = null,
+    List<string>? TopTargetedEntities = null
+);
+
+/// <summary>C# code dependency on a game entity (item, block, buff, etc.)</summary>
+public record CSharpEntityDependency(
+    string EntityType,
+    string EntityName,
+    string SourceFile,
+    string Pattern
+);
+
+/// <summary>XML operation for mod details</summary>
+public record XmlOperationExport(
+    string Operation,
+    string? TargetType,
+    string? TargetName,
+    string? PropertyName,
+    string? XPath,
+    string? ElementContent
+);
+
+/// <summary>Harmony patch for mod details</summary>
+public record HarmonyPatchExport(
+    string ClassName,
+    string MethodName,
+    string PatchType,
+    string? CodeSnippet = null
+);
+
+/// <summary>Class extension for mod details</summary>
+public record ClassExtensionExport(
+    string BaseClass,
+    string ChildClass
+);
+
+/// <summary>Call graph node for C# page</summary>
+public record CallGraphNode(
+    string MethodName,
+    string ClassName,
+    string ModName,
+    int Depth,
+    List<string> Calls
+);
+
+/// <summary>Event flow edge for C# page</summary>
+public record EventFlowEdge(
+    string EventName,
+    int SubscriberCount,
+    int TriggerCount
+);
