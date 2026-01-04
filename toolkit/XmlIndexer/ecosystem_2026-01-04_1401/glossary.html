@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="obsidian">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glossary - 7D2D Ecosystem</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<nav class="site-nav">
+  <div class="nav-brand">7D2D Ecosystem</div>
+  <a href="index.html" class="nav-item">Dashboard</a>
+  <a href="entities.html" class="nav-item">Entities</a>
+  <a href="mods.html" class="nav-item">Mods</a>
+  <a href="conflicts.html" class="nav-item">Conflicts</a>
+  <a href="dependencies.html" class="nav-item">Dependencies</a>
+  <a href="csharp.html" class="nav-item">C# Analysis</a>
+  <a href="glossary.html" class="nav-item active">Glossary</a>
+  <select class="theme-select" onchange="setTheme(this.value)">
+    <option value="obsidian">Obsidian</option>
+    <option value="graphite">Graphite</option>
+  </select>
+</nav>
+
+<div class="page-container">
+<div class="page-header">
+  <h1>Glossary</h1>
+  <p>Reference guide for all terms, patterns, and concepts used in this report</p>
+</div>
+<div class="filter-bar">
+  <input type="text" class="filter-search" id="glossary-search" placeholder="Search terms..." oninput="filterGlossary()">
+</div>
+<div id="glossary-content">
+<div class="glossary-category" data-category="reference-types">
+<h3>Reference Types</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">How entities connect to each other in the game's XML configuration.</p>
+<div class="glossary-term">
+<div class="term-name">extends</div>
+<div class="term-def">Inheritance - entity inherits all properties from a parent template. Changes to parent affect all children.</div>
+<div class="term-example">&lt;item name=&quot;gunPistol&quot; extends=&quot;gunHandgunT0Base&quot;&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">property</div>
+<div class="term-def">Direct property reference - entity uses another entity&#39;s name in a property value.</div>
+<div class="term-example">&lt;property name=&quot;HandItem&quot; value=&quot;meleeClubWood&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">triggered_effect:AddBuff</div>
+<div class="term-def">Buff application - this item/action applies a buff when used or triggered.</div>
+<div class="term-example">&lt;triggered_effect trigger=&quot;onSelfPrimaryActionEnd&quot; action=&quot;AddBuff&quot; buff=&quot;buffDrunk&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">triggered_effect:RemoveBuff</div>
+<div class="term-def">Buff removal - this item/action removes a buff when used.</div>
+<div class="term-example">&lt;triggered_effect trigger=&quot;onSelfSecondaryActionEnd&quot; action=&quot;RemoveBuff&quot; buff=&quot;buffDrunk&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">triggered_effect:PlaySound</div>
+<div class="term-def">Sound trigger - plays a sound effect when the trigger occurs.</div>
+<div class="term-example">&lt;triggered_effect trigger=&quot;onSelfPrimaryActionStart&quot; action=&quot;PlaySound&quot; sound=&quot;Weapons/Items/Use/syringe&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">loot_entry</div>
+<div class="term-def">Loot table entry - this entity can drop as loot from a container or group.</div>
+<div class="term-example">&lt;lootgroup name=&quot;groupTools&quot;&gt;&lt;item name=&quot;toolPickaxeT1&quot; count=&quot;1&quot;/&gt;&lt;/lootgroup&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">recipe_ingredient</div>
+<div class="term-def">Crafting ingredient - this item is required to craft something else.</div>
+<div class="term-example">&lt;ingredient name=&quot;resourceWood&quot; count=&quot;10&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">recipe_output</div>
+<div class="term-def">Crafting output - this is what a recipe produces when crafted.</div>
+<div class="term-example">&lt;recipe name=&quot;gunPistolT1&quot; count=&quot;1&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">group_member</div>
+<div class="term-def">Spawn group member - entity belongs to a spawn/entity group.</div>
+<div class="term-example">&lt;entitygroup name=&quot;ZombiesAll&quot;&gt;&lt;entity name=&quot;zombieMarlene&quot; prob=&quot;1&quot;/&gt;&lt;/entitygroup&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">property:SpawnEntityName</div>
+<div class="term-def">Entity spawn - spawns this entity under certain conditions.</div>
+<div class="term-example">&lt;property name=&quot;SpawnEntityName&quot; value=&quot;animalChicken&quot;/&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">property:LootListOnDeath</div>
+<div class="term-def">Death loot - uses this loot table when the entity dies.</div>
+<div class="term-example">&lt;property name=&quot;LootListOnDeath&quot; value=&quot;12&quot;/&gt;</div>
+</div>
+</div>
+<div class="glossary-category" data-category="xpath-ops">
+<h3>XPath Operations</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">How mods modify the game's XML files.</p>
+<div class="glossary-term">
+<div class="term-name">set</div>
+<div class="term-def">Overwrites an existing property value. Last mod to run wins if multiple mods set the same property.</div>
+<div class="term-example">&lt;set xpath=&quot;/items/item[@name=&#39;gunPistol&#39;]/property[@name=&#39;DamageEntity&#39;]/@value&quot;&gt;50&lt;/set&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">setattribute</div>
+<div class="term-def">Sets an attribute on an existing element. Similar to &#39;set&#39; but targets attributes specifically.</div>
+<div class="term-example">&lt;setattribute xpath=&quot;/items/item[@name=&#39;gunPistol&#39;]&quot; name=&quot;extends&quot;&gt;gunHandgunBase&lt;/setattribute&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">append</div>
+<div class="term-def">Adds new content as the last child of an element. Safe - multiple mods can append without conflict.</div>
+<div class="term-example">&lt;append xpath=&quot;/items/item[@name=&#39;gunPistol&#39;]&quot;&gt;
+  &lt;property name=&quot;CustomProp&quot; value=&quot;1&quot;/&gt;
+&lt;/append&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">insertBefore</div>
+<div class="term-def">Adds new content before a specific element. Useful for controlling order.</div>
+<div class="term-example">&lt;insertBefore xpath=&quot;/recipes/recipe[@name=&#39;gunPistolT1&#39;]&quot;&gt;&lt;!-- new recipe here --&gt;&lt;/insertBefore&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">insertAfter</div>
+<div class="term-def">Adds new content after a specific element.</div>
+<div class="term-example">&lt;insertAfter xpath=&quot;/items/item[@name=&#39;gunPistol&#39;]&quot;&gt;&lt;!-- new item here --&gt;&lt;/insertAfter&gt;</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">remove</div>
+<div class="term-def">Removes an element from the XML. Dangerous if other mods depend on this content.</div>
+<div class="term-example">&lt;remove xpath=&quot;/items/item[@name=&#39;obsoleteWeapon&#39;]&quot;/&gt;</div>
+</div>
+</div>
+<div class="glossary-category" data-category="severity">
+<h3>Conflict Severity Patterns</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">How we classify potential mod conflicts.</p>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-high">HIGH</span> Remove + Modify</div>
+<div class="term-def">One mod removes an entity while another modifies it. The modify operation will fail or have no effect.</div>
+<div class="term-example">Mod A: remove xpath=&quot;/items/item[@name=&#39;X&#39;]&quot; | Mod B: set value on item X</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-high">HIGH</span> Remove + C# Dependency</div>
+<div class="term-def">A mod removes content that another mod&#39;s C# code depends on. Can cause runtime errors.</div>
+<div class="term-example">Mod A removes &#39;buffBase&#39; | Mod B&#39;s code calls BuffManager.AddBuff(&quot;buffBase&quot;)</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-medium">MEDIUM</span> Multiple Set Operations</div>
+<div class="term-def">Multiple mods set the same property. Only the last mod in load order takes effect.</div>
+<div class="term-example">Mod A sets DamageEntity=50 | Mod B sets DamageEntity=100 → Result: 100</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-medium">MEDIUM</span> Conflicting Extends</div>
+<div class="term-def">Multiple mods change what an entity extends/inherits from.</div>
+<div class="term-example">Mod A: item extends gunBase | Mod B: item extends meleeBase</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-low">LOW</span> Multiple Appends</div>
+<div class="term-def">Multiple mods append content to the same entity. Usually compatible but may cause duplicates.</div>
+<div class="term-example">Both Mod A and B append new properties to the same item</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-info">NONE</span> Independent Operations</div>
+<div class="term-def">Mods modify different aspects of the same entity without overlap.</div>
+<div class="term-example">Mod A sets damage | Mod B sets reload time → Both changes apply</div>
+</div>
+</div>
+<div class="glossary-category" data-category="entity-types">
+<h3>Entity Types</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">Types of game definitions and their counts in your database.</p>
+<div class="glossary-term">
+<div class="term-name">block <span class="text-dim">(6,289)</span></div>
+<div class="term-def">Placeable blocks: building materials, furniture, traps, etc.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">sound <span class="text-dim">(2,453)</span></div>
+<div class="term-def">Sound definitions: audio assets and their properties.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">entity_group <span class="text-dim">(1,877)</span></div>
+<div class="term-def">Game configuration data.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">item <span class="text-dim">(1,375)</span></div>
+<div class="term-def">Holdable items: weapons, tools, food, resources, etc.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">loot_group <span class="text-dim">(1,002)</span></div>
+<div class="term-def">Loot groups: collections of items that can spawn together.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">game_event <span class="text-dim">(889)</span></div>
+<div class="term-def">Game configuration data.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">recipe <span class="text-dim">(588)</span></div>
+<div class="term-def">Crafting recipes: how items are crafted from ingredients.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">buff <span class="text-dim">(461)</span></div>
+<div class="term-def">Status effects: temporary stat modifiers, debuffs, etc.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">entity_class <span class="text-dim">(292)</span></div>
+<div class="term-def">Entity classes: zombies, animals, NPCs, etc.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">quest <span class="text-dim">(229)</span></div>
+<div class="term-def">Quests: objectives the player can complete for rewards.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">perk <span class="text-dim">(57)</span></div>
+<div class="term-def">Perks: permanent character bonuses.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">skill <span class="text-dim">(16)</span></div>
+<div class="term-def">Skills: character skills that can be learned/upgraded.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">vehicle <span class="text-dim">(6)</span></div>
+<div class="term-def">Drivable vehicles: bikes, cars, gyrocopters.</div>
+</div>
+</div>
+<div class="glossary-category" data-category="health">
+<h3>Mod Health Status</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">What the health indicators mean for each mod.</p>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-healthy">Healthy</span></div>
+<div class="term-def">Mod appears to function correctly. No detected conflicts with other mods or missing dependencies.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-review">Review</span></div>
+<div class="term-def">Mod may have issues that need attention. Could include intentional removals or minor conflicts.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name"><span class="tag tag-broken">Broken</span></div>
+<div class="term-def">Mod has critical issues. Removes content needed by other mods or has unresolved C# dependencies.</div>
+</div>
+</div>
+<div class="glossary-category" data-category="csharp">
+<h3>C# Mod Integration</h3>
+<p class="text-muted" style="margin-bottom: 1rem;">How C# mods interact with the game.</p>
+<div class="glossary-term">
+<div class="term-name">Harmony Patch</div>
+<div class="term-def">A technique to modify game code at runtime without changing the original DLL. Can run code before (Prefix), after (Postfix), or transform (Transpiler) methods.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">Prefix Patch</div>
+<div class="term-def">Runs before the original method. Can skip the original method entirely by returning false.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">Postfix Patch</div>
+<div class="term-def">Runs after the original method. Can modify the return value.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">Transpiler Patch</div>
+<div class="term-def">Modifies the IL code of a method at runtime. Most powerful but also most complex.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">Class Extension</div>
+<div class="term-def">A mod class that inherits from a game class (like ItemAction, Block, Entity) to add new behavior.</div>
+</div>
+<div class="glossary-term">
+<div class="term-name">IModApi</div>
+<div class="term-def">Interface that mods implement to be loaded by the game. Entry point for mod initialization.</div>
+</div>
+</div>
+</div>
+
+</div>
+<script>
+
+// Fuzzy search scoring - matches characters in order, not necessarily adjacent
+function fuzzyScore(query, target) {
+  if (!query) return 1;
+  query = query.toLowerCase();
+  target = target.toLowerCase();
+  let qi = 0, score = 0, lastMatch = -1;
+  for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+    if (target[ti] === query[qi]) {
+      score += (ti === lastMatch + 1) ? 2 : 1; // Bonus for consecutive
+      lastMatch = ti;
+      qi++;
+    }
+  }
+  return qi === query.length ? score : 0;
+}
+
+// Generic search helper
+function searchItems(query, items, getSearchText) {
+  if (!query) return items.slice(0, 20);
+  return items
+    .map(item => ({ item, score: fuzzyScore(query, getSearchText(item)) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.item);
+}
+
+// Theme persistence
+function initTheme() {
+  const saved = localStorage.getItem('7d2d-theme') || 'obsidian';
+  document.documentElement.dataset.theme = saved;
+  const select = document.querySelector('.theme-select');
+  if (select) select.value = saved;
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('7d2d-theme', theme);
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', initTheme);
+
+// Debounce helper for search
+function debounce(fn, delay) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// Show/hide more items
+function toggleShowMore(btn, containerId, allItems, renderFn) {
+  const container = document.getElementById(containerId);
+  const showAll = btn.dataset.expanded !== 'true';
+
+  if (showAll) {
+    container.innerHTML = allItems.map(renderFn).join('');
+    btn.textContent = 'Show Less';
+    btn.dataset.expanded = 'true';
+  } else {
+    container.innerHTML = allItems.slice(0, 20).map(renderFn).join('');
+    btn.textContent = `Show All (${allItems.length})`;
+    btn.dataset.expanded = 'false';
+  }
+}
+
+
+function filterGlossary() {
+  const query = document.getElementById('glossary-search').value.toLowerCase();
+
+  document.querySelectorAll('.glossary-term').forEach(term => {
+    const text = term.textContent.toLowerCase();
+    term.style.display = text.includes(query) ? '' : 'none';
+  });
+
+  // Hide empty categories
+  document.querySelectorAll('.glossary-category').forEach(cat => {
+    const visibleTerms = cat.querySelectorAll('.glossary-term');
+    const hasVisible = Array.from(visibleTerms).some(t => t.style.display !== 'none');
+    cat.style.display = hasVisible || !query ? '' : 'none';
+  });
+}
+
+</script>
+</body>
+</html>

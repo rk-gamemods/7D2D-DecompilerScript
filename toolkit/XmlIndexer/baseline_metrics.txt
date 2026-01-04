@@ -1,0 +1,11 @@
+# Baseline Metrics - Captured 2026-01-04
+# Branch: refactor/code-consolidation
+# Commit: ce8c77d (master baseline before refactor)
+
+harmony_patches=13
+mod_xml_operations=82
+mod_csharp_deps=21
+harmony_conflicts=0
+game_code_analysis=1108
+mods=38
+xml_definitions=15534
