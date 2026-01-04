@@ -17,10 +17,6 @@ public class ModAnalyzer
     private int _conflictCount;
     private int _cautionCount;
 
-    // Cache for decompiled mod code
-    private static readonly Dictionary<string, string> _decompileCache = new();
-    private static string? _decompiledModsDir;
-
     public ModAnalyzer(string dbPath)
     {
         _dbPath = dbPath;
@@ -70,7 +66,7 @@ public class ModAnalyzer
             _conflictCount = 0;
             _cautionCount = 0;
 
-            var deps = ScanCSharpDependencies(modDir, modName);
+            var deps = CSharpAnalyzer.ScanCSharpDependencies(modDir, modName);
             allDependencies.AddRange(deps);
 
             if (!Directory.Exists(configPath))
@@ -225,19 +221,20 @@ public class ModAnalyzer
             }
 
             // Scan and store C# dependencies
-            var deps = ScanCSharpDependencies(modDir, modName);
+            var deps = CSharpAnalyzer.ScanCSharpDependencies(modDir, modName);
             foreach (var dep in deps)
             {
                 using var cmd = db.CreateCommand();
-                cmd.CommandText = @"INSERT INTO mod_csharp_deps 
-                    (mod_id, dependency_type, dependency_name, source_file, line_number, pattern)
-                    VALUES ($modId, $type, $name, $file, $line, $pattern)";
+                cmd.CommandText = @"INSERT INTO mod_csharp_deps
+                    (mod_id, dependency_type, dependency_name, source_file, line_number, pattern, code_snippet)
+                    VALUES ($modId, $type, $name, $file, $line, $pattern, $snippet)";
                 cmd.Parameters.AddWithValue("$modId", modId);
                 cmd.Parameters.AddWithValue("$type", dep.Type);
                 cmd.Parameters.AddWithValue("$name", dep.Name);
                 cmd.Parameters.AddWithValue("$file", dep.SourceFile);
                 cmd.Parameters.AddWithValue("$line", dep.Line);
                 cmd.Parameters.AddWithValue("$pattern", dep.Pattern);
+                cmd.Parameters.AddWithValue("$snippet", (object?)dep.CodeSnippet ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
 
@@ -338,123 +335,84 @@ public class ModAnalyzer
     }
 
     // ==========================================================================
-    // C# Dependency Scanning
-    // ==========================================================================
-
-    public List<CSharpDependency> ScanCSharpDependencies(string modDir, string modName)
-    {
-        var deps = new List<CSharpDependency>();
-        var patterns = GetXmlDependencyPatterns();
-
-        var modDlls = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
-            .Where(dll => !Path.GetFileName(dll).StartsWith("0Harmony", StringComparison.OrdinalIgnoreCase))
-            .Where(dll => !Path.GetFileName(dll).Equals("Mono.Cecil.dll", StringComparison.OrdinalIgnoreCase))
-            .Where(dll => !Path.GetFileName(dll).Contains("System."))
-            .Where(dll => !Path.GetFileName(dll).Contains("Microsoft."))
-            .ToList();
-
-        if (modDlls.Count == 0)
-            return deps;
-
-        foreach (var dllPath in modDlls)
-        {
-            var csFiles = DecompileModDll(dllPath, modName);
-            if (csFiles.Count == 0) continue;
-
-            foreach (var csFile in csFiles)
-            {
-                try
-                {
-                    var content = File.ReadAllText(csFile);
-                    var lines = content.Split('\n');
-                    var fileName = Path.GetFileName(csFile);
-
-                    foreach (var (pattern, type, nameGroup) in patterns)
-                    {
-                        var regex = new Regex(pattern, RegexOptions.Compiled);
-                        
-                        for (int i = 0; i < lines.Length; i++)
-                        {
-                            var matches = regex.Matches(lines[i]);
-                            foreach (Match match in matches)
-                            {
-                                var name = nameGroup > 0 ? match.Groups[nameGroup].Value : match.Value;
-                                if (!string.IsNullOrEmpty(name) && !name.Contains("{") && !name.Contains("+"))
-                                {
-                                    deps.Add(new CSharpDependency(modName, type, name, fileName, i + 1, match.Value.Trim()));
-                                }
-                            }
-                        }
-                    }
-                }
-                catch { /* Skip unreadable files */ }
-            }
-        }
-
-        return deps;
-    }
-
-    public static (string Pattern, string Type, int NameGroup)[] GetXmlDependencyPatterns()
-    {
-        return new (string Pattern, string Type, int NameGroup)[]
-        {
-            // Item lookups
-            (@"ItemClass\.GetItem\s*\(\s*""([^""]+)""\s*[,\)]", "item", 1),
-            (@"ItemClass\.GetItemClass\s*\(\s*""([^""]+)""\s*\)", "item", 1),
-            (@"new\s+ItemValue\s*\(\s*ItemClass\.GetItem\s*\(\s*""([^""]+)""\s*\)", "item", 1),
-            
-            // Block lookups
-            (@"Block\.GetBlockByName\s*\(\s*""([^""]+)""\s*\)", "block", 1),
-            (@"Block\.GetBlockValue\s*\(\s*""([^""]+)""\s*\)", "block", 1),
-            
-            // Entity lookups
-            (@"EntityClass\.FromString\s*\(\s*""([^""]+)""\s*\)", "entity_class", 1),
-            (@"EntityFactory\.CreateEntity\s*\([^,]*,\s*""([^""]+)""\s*\)", "entity_class", 1),
-            
-            // Buff lookups
-            (@"BuffManager\.GetBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"BuffClass\.GetBuffClass\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"\.AddBuff\s*\(\s*""([^""]+)""\s*[\),]", "buff", 1),
-            (@"\.RemoveBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"\.HasBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            
-            // Harmony patches
-            (@"\[HarmonyPatch\s*\(\s*typeof\s*\(\s*([\w\.]+)\s*\)", "harmony_class", 1),
-            (@"\[HarmonyPatch\s*\(\s*""([^""]+)""\s*\)", "harmony_method", 1),
-            (@"\[HarmonyPrefix\]", "harmony_prefix", 0),
-            (@"\[HarmonyPostfix\]", "harmony_postfix", 0),
-            (@"\[HarmonyTranspiler\]", "harmony_transpiler", 0),
-            
-            // Inheritance patterns
-            (@":\s*(ItemAction\w*)\b", "extends_itemaction", 1),
-            (@":\s*(Block\w*)\b", "extends_block", 1),
-            (@":\s*(EntityAlive|Entity\w*)\b", "extends_entity", 1),
-            (@":\s*(MinEventAction\w*)\b", "extends_mineventaction", 1),
-            (@":\s*(IModApi)\b", "implements_imodapi", 1),
-        };
-    }
-
-    // ==========================================================================
     // Helper Methods
     // ==========================================================================
 
     public static XPathTarget? ExtractTargetFromXPath(string xpath)
     {
-        var patterns = new Dictionary<string, string>
+        // Primary patterns - select by @name (reliable)
+        // Note: Patterns use (?:/|$) at the end to match either end of string or continuation
+        var namePatterns = new Dictionary<string, string>
         {
-            { @"/items/item\[@name='([^']+)'\]", "item" },
-            { @"/blocks/block\[@name='([^']+)'\]", "block" },
-            { @"/entity_classes/entity_class\[@name='([^']+)'\]", "entity_class" },
-            { @"/buffs/buff\[@name='([^']+)'\]", "buff" },
-            { @"/recipes/recipe\[@name='([^']+)'\]", "recipe" },
-            { @"/Sounds/SoundDataNode\[@name='([^']+)'\]", "sound" },
+            { @"/items/item\[@name='([^']+)'\](?:/|$)", "item" },
+            { @"/blocks/block\[@name='([^']+)'\](?:/|$)", "block" },
+            { @"/entity_classes/entity_class\[@name='([^']+)'\](?:/|$)", "entity_class" },
+            { @"/buffs/buff\[@name='([^']+)'\](?:/|$)", "buff" },
+            { @"/recipes/recipe\[@name='([^']+)'\](?:/|$)", "recipe" },
+            { @"/Sounds/SoundDataNode\[@name='([^']+)'\](?:/|$)", "sound" },
+            { @"/lootcontainers/lootcontainer\[@name='([^']+)'\](?:/|$)", "loot_container" },
+            { @"/lootcontainers/lootgroup\[@name='([^']+)'\](?:/|$)", "loot_group" },
+            { @"/quests/quest\[@id='([^']+)'\](?:/|$)", "quest" },
+            { @"/progression/perks/perk\[@name='([^']+)'\](?:/|$)", "perk" },
+            { @"/progression/skills/skill\[@name='([^']+)'\](?:/|$)", "skill" },
+            { @"/vehicles/vehicle\[@name='([^']+)'\](?:/|$)", "vehicle" },
+            { @"/windows/window\[@name='([^']+)'\](?:/|$)", "window" },
+            { @"/controls/(\w+)\[@name='([^']+)'\](?:/|$)", "control" },
+            { @"/gameevents/gameevent\[@name='([^']+)'\](?:/|$)", "game_event" },
+            { @"/archetypes/archetype\[@name='([^']+)'\](?:/|$)", "archetype" },
         };
 
-        foreach (var pattern in patterns)
+        // Check name-based patterns first (reliable matches)
+        foreach (var pattern in namePatterns)
         {
             var match = Regex.Match(xpath, pattern.Key);
             if (match.Success)
-                return new XPathTarget(pattern.Value, match.Groups[1].Value);
+            {
+                // Handle special case for controls which has element name in group 1
+                if (pattern.Value == "control")
+                    return new XPathTarget(match.Groups[1].Value, match.Groups[2].Value, "name", match.Groups[2].Value, false);
+                return new XPathTarget(pattern.Value, match.Groups[1].Value, "name", match.Groups[1].Value, false);
+            }
+        }
+
+        // Secondary patterns - select by non-name attribute (fragile - flag as warning)
+        // These xpaths work but may be harder to track or may break if base game changes
+        var fragilePatterns = new (string pattern, string type, string attr)[]
+        {
+            (@"/lootcontainers/lootcontainer\[@size='([^']+)'\](?:/|$)", "loot_container", "size"),
+            (@"/lootcontainers/lootcontainer\[@id='([^']+)'\](?:/|$)", "loot_container", "id"),
+            (@"/windows/window\[@controller='([^']+)'\](?:/|$)", "window", "controller"),
+            (@"/controls/(\w+)\[@controller='([^']+)'\](?:/|$)", "control", "controller"),
+            (@"/items/item\[@Extends='([^']+)'\](?:/|$)", "item", "Extends"),
+            (@"/blocks/block\[@Extends='([^']+)'\](?:/|$)", "block", "Extends"),
+        };
+
+        foreach (var (pattern, type, attr) in fragilePatterns)
+        {
+            var match = Regex.Match(xpath, pattern);
+            if (match.Success)
+            {
+                var selectorValue = match.Groups[match.Groups.Count - 1].Value;
+                // For fragile matches, use attr:value as the "name" so it's visible in reports
+                var displayName = $"[{attr}='{selectorValue}']";
+                return new XPathTarget(type, displayName, attr, selectorValue, true);
+            }
+        }
+
+        // Try generic entity pattern - extract element type from path
+        // (?:/|$) allows matching paths that continue or end after the selector
+        var genericMatch = Regex.Match(xpath, @"/([\w_]+)/([\w_]+)\[@(\w+)='([^']+)'\](?:/|$)");
+        if (genericMatch.Success)
+        {
+            var container = genericMatch.Groups[1].Value;
+            var element = genericMatch.Groups[2].Value;
+            var attr = genericMatch.Groups[3].Value;
+            var value = genericMatch.Groups[4].Value;
+            
+            bool isFragile = attr != "name" && attr != "id";
+            var name = attr == "name" ? value : $"[{attr}='{value}']";
+            
+            return new XPathTarget(element, name, attr, value, isFragile);
         }
 
         return null;
@@ -639,16 +597,36 @@ public class ModAnalyzer
                         newValue = ExtractValueFromXPath(xpath);
 
                     var elementContent = element.ToString();
-                    if (elementContent.Length > 500) 
+                    if (elementContent.Length > 500)
                         elementContent = elementContent.Substring(0, 500) + "...";
 
                     // Normalize XPath for conflict detection
                     var normResult = XPathNormalizer.Normalize(xpath);
 
+                    // Extract effect context for passive_effect and triggered_effect analysis
+                    var effectContext = XPathNormalizer.ExtractEffectContext(xpath);
+
+                    // Parse effect operation type if this is setting an @operation attribute
+                    string? effectOperation = null;
+                    string? effectValueType = null;
+                    int isSetOperation = 0;
+
+                    if (effectContext.IsOperationChange && !string.IsNullOrEmpty(newValue))
+                    {
+                        var (parsedOp, parsedValueType, parsedIsSet) = XPathNormalizer.ParseEffectOperation(newValue);
+                        effectOperation = parsedOp;
+                        effectValueType = parsedValueType;
+                        isSetOperation = parsedIsSet ? 1 : 0;
+                    }
+
                     using var cmd = db.CreateCommand();
                     cmd.CommandText = @"INSERT INTO mod_xml_operations
-                        (mod_id, operation, xpath, xpath_normalized, xpath_hash, target_type, target_name, property_name, new_value, element_content, file_path, line_number, impact_status)
-                        VALUES ($modId, $op, $xpath, $xpathNorm, $xpathHash, $targetType, $targetName, $propName, $newVal, $content, $file, $line, $status)";
+                        (mod_id, operation, xpath, xpath_normalized, xpath_hash, target_type, target_name, property_name, new_value, element_content, file_path, line_number, impact_status,
+                         effect_name, effect_operation, effect_value_type, is_set_operation, parent_entity, parent_entity_name,
+                         is_triggered_effect, trigger_action, trigger_cvar, trigger_operation, modifies_operation, modifies_value)
+                        VALUES ($modId, $op, $xpath, $xpathNorm, $xpathHash, $targetType, $targetName, $propName, $newVal, $content, $file, $line, $status,
+                                $effectName, $effectOp, $effectValueType, $isSetOp, $parentEntity, $parentEntityName,
+                                $isTriggered, $triggerAction, $triggerCvar, $triggerOp, $modifiesOp, $modifiesVal)";
                     cmd.Parameters.AddWithValue("$modId", modId);
                     cmd.Parameters.AddWithValue("$op", op);
                     cmd.Parameters.AddWithValue("$xpath", xpath);
@@ -662,6 +640,21 @@ public class ModAnalyzer
                     cmd.Parameters.AddWithValue("$file", fileName);
                     cmd.Parameters.AddWithValue("$line", lineInfo.HasLineInfo() ? lineInfo.LineNumber : 0);
                     cmd.Parameters.AddWithValue("$status", status.ToString());
+                    // Effect context columns
+                    cmd.Parameters.AddWithValue("$effectName", effectContext.EffectName ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$effectOp", effectOperation ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$effectValueType", effectValueType ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$isSetOp", isSetOperation);
+                    cmd.Parameters.AddWithValue("$parentEntity", effectContext.ParentEntity ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$parentEntityName", effectContext.ParentEntityName ?? (object)DBNull.Value);
+                    // Triggered effect columns
+                    cmd.Parameters.AddWithValue("$isTriggered", effectContext.IsTriggeredEffect ? 1 : 0);
+                    cmd.Parameters.AddWithValue("$triggerAction", effectContext.TriggerAction ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$triggerCvar", effectContext.TriggerCVar ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("$triggerOp", effectContext.TriggerOperation ?? (object)DBNull.Value);
+                    // Modification tracking
+                    cmd.Parameters.AddWithValue("$modifiesOp", effectContext.IsOperationChange ? 1 : 0);
+                    cmd.Parameters.AddWithValue("$modifiesVal", effectContext.IsValueChange ? 1 : 0);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -669,65 +662,6 @@ public class ModAnalyzer
         catch { /* Skip unparseable files */ }
 
         return new XmlAnalysisResult(operations, conflicts, cautions);
-    }
-
-    private List<string> DecompileModDll(string dllPath, string modName)
-    {
-        var csFiles = new List<string>();
-        
-        if (_decompileCache.TryGetValue(dllPath, out var cachedDir))
-        {
-            if (Directory.Exists(cachedDir))
-                return Directory.GetFiles(cachedDir, "*.cs", SearchOption.AllDirectories).ToList();
-        }
-
-        if (_decompiledModsDir == null)
-        {
-            _decompiledModsDir = Path.Combine(Path.GetTempPath(), "XmlIndexer_ModDecompile_" + Process.GetCurrentProcess().Id);
-            Directory.CreateDirectory(_decompiledModsDir);
-            AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupDecompiledMods();
-        }
-
-        var dllName = Path.GetFileNameWithoutExtension(dllPath);
-        var outputDir = Path.Combine(_decompiledModsDir, modName, dllName);
-        
-        try
-        {
-            Directory.CreateDirectory(outputDir);
-            
-            var psi = new ProcessStartInfo
-            {
-                FileName = "ilspycmd",
-                Arguments = $"\"{dllPath}\" -p -o \"{outputDir}\" -lv Latest",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process == null) return csFiles;
-
-            process.WaitForExit(30000);
-            
-            if (process.ExitCode == 0 && Directory.Exists(outputDir))
-            {
-                csFiles = Directory.GetFiles(outputDir, "*.cs", SearchOption.AllDirectories).ToList();
-                _decompileCache[dllPath] = outputDir;
-            }
-        }
-        catch { /* ilspycmd not installed or other error */ }
-
-        return csFiles;
-    }
-
-    private static void CleanupDecompiledMods()
-    {
-        if (_decompiledModsDir != null && Directory.Exists(_decompiledModsDir))
-        {
-            try { Directory.Delete(_decompiledModsDir, true); }
-            catch { /* Best effort */ }
-        }
     }
 
     private void PrintModSummary()
