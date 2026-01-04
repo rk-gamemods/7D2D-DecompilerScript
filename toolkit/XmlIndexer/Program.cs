@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using XmlIndexer.Analysis;
 using XmlIndexer.Models;
 using XmlIndexer.Reports;
+using XmlIndexer.Utils;
 
 namespace XmlIndexer;
 
@@ -131,19 +132,17 @@ public class Program
                 return SearchDefinitions(args[2]);
 
             case "report":
-                if (args.Length < 3)
+                if (args.Length < 4)
                 {
-                    Console.WriteLine("Usage: XmlIndexer report <db_path> <output_dir> [--html] [--md] [--json]");
+                    Console.WriteLine("Usage: XmlIndexer report <game_path> <mods_folder> <output_dir> [--open]");
                     return 1;
                 }
-                _dbPath = args[1];
-                var outputDir = args[2];
-                var formats = new HashSet<string>();
-                if (args.Contains("--html")) formats.Add("html");
-                if (args.Contains("--md")) formats.Add("md");
-                if (args.Contains("--json")) formats.Add("json");
-                if (formats.Count == 0) formats.Add("html"); // Default to HTML
-                return GenerateReports(outputDir, formats);
+                _gamePath = args[1];
+                var reportModsPath = args[2];
+                var outputDir = args[3];
+                _dbPath = Path.Combine(outputDir, "ecosystem.db");
+                var openAfter = args.Contains("--open");
+                return GenerateFullReport(reportModsPath, outputDir, openAfter);
 
             case "export-semantic-traces":
                 if (args.Length < 3)
@@ -199,6 +198,44 @@ public class Program
                 }
                 return DetectConflicts(callgraphDb);
 
+            case "build-dependency-graph":
+                if (args.Length < 2)
+                {
+                    Console.WriteLine("Usage: XmlIndexer build-dependency-graph <db_path>");
+                    return 1;
+                }
+                _dbPath = args[1];
+                return BuildDependencyGraph();
+
+            case "impact-analysis":
+                if (args.Length < 4)
+                {
+                    Console.WriteLine("Usage: XmlIndexer impact-analysis <db_path> <type> <name>");
+                    Console.WriteLine("  Example: XmlIndexer impact-analysis eco.db buff buffCoffeeBuzz");
+                    return 1;
+                }
+                _dbPath = args[1];
+                return ImpactAnalysis(args[2], args[3]);
+
+            case "query":
+            case "sql":
+                if (args.Length < 3)
+                {
+                    Console.WriteLine("Usage: XmlIndexer query <db_path> \"<sql_query>\"");
+                    Console.WriteLine("  Example: XmlIndexer query eco.db \"SELECT * FROM mods LIMIT 5\"");
+                    return 1;
+                }
+                _dbPath = args[1];
+                return RunQuery(string.Join(" ", args.Skip(2)));
+
+            case "xpath-test":
+                if (args.Length < 2)
+                {
+                    Console.WriteLine("Usage: XmlIndexer xpath-test \"<xpath>\"");
+                    return 1;
+                }
+                return TestXPathParsing(string.Join(" ", args.Skip(1)));
+
             default:
                 PrintUsage();
                 return 1;
@@ -219,20 +256,21 @@ public class Program
         Console.WriteLine();
         Console.WriteLine("INSIGHTS:");
         Console.WriteLine("  stats <db_path>                    Fun statistics about game + mods");
+        Console.WriteLine("  query <db_path> \"<sql>\"            Run ad-hoc SQL query on database");
         Console.WriteLine("  ecosystem <db_path>                Combined codebase+mods ecosystem view");
         Console.WriteLine("  refs <db_path> <type> <name>       Find all references to an entity");
         Console.WriteLine("  list <db_path> <type>              List all definitions of a type");
         Console.WriteLine("  search <db_path> <pattern>         Search definitions by name");
         Console.WriteLine();
         Console.WriteLine("REPORTS:");
-        Console.WriteLine("  report <db_path> <output_dir>      Generate HTML/MD/JSON reports");
-        Console.WriteLine("    --html                           Generate HTML report (default)");
-        Console.WriteLine("    --md                             Generate Markdown report");
-        Console.WriteLine("    --json                           Generate JSON data export");
+        Console.WriteLine("  report <game> <mods> <output_dir>  Full rebuild + HTML report (single command)");
+        Console.WriteLine("    --open                           Open report in browser after generation");
         Console.WriteLine();
         Console.WriteLine("CONFLICT DETECTION:");
         Console.WriteLine("  detect-conflicts <db_path>         Detect XPath-level conflicts (JSON output)");
         Console.WriteLine("    --callgraph-db <path>            Path to callgraph_full.db for C#/XML analysis");
+        Console.WriteLine("  build-dependency-graph <db>        Build transitive references + indirect conflicts");
+        Console.WriteLine("  impact-analysis <db> <type> <name> Show what depends on an entity");
         Console.WriteLine();
         Console.WriteLine("SEMANTIC ANALYSIS (LLM-powered descriptions):");
         Console.WriteLine("  export-semantic-traces <db> <out>  Export traces for LLM analysis");
@@ -242,10 +280,9 @@ public class Program
         Console.WriteLine("TYPES: item, block, entity_class, buff, recipe, sound, vehicle, quest");
         Console.WriteLine();
         Console.WriteLine("Examples:");
-        Console.WriteLine("  XmlIndexer full-analyze \"C:\\Steam\\...\\7 Days To Die\" \"...\\Mods\" eco.db");
-        Console.WriteLine("  XmlIndexer report eco.db ./reports --html --md");
+        Console.WriteLine("  XmlIndexer report \"C:\\Steam\\...\\7 Days To Die\" \"...\\Mods\" ./reports --open");
+        Console.WriteLine("  XmlIndexer query eco.db \"SELECT * FROM mods LIMIT 5\"");
         Console.WriteLine("  XmlIndexer refs eco.db item itemRepairKit");
-        Console.WriteLine("  XmlIndexer export-semantic-traces eco.db traces.jsonl");
     }
 
     private static int BuildDatabase()
@@ -398,6 +435,8 @@ public class Program
                 CREATE TABLE mods (
                     id INTEGER PRIMARY KEY,
                     name TEXT UNIQUE NOT NULL,
+                    folder_name TEXT,
+                    load_order INTEGER DEFAULT 0,
                     has_xml INTEGER DEFAULT 0,
                     has_dll INTEGER DEFAULT 0,
                     xml_operations INTEGER DEFAULT 0,
@@ -412,6 +451,7 @@ public class Program
                     website TEXT
                 );
                 CREATE INDEX idx_mod_name ON mods(name);
+                CREATE INDEX idx_mod_load_order ON mods(load_order);
 
                 CREATE TABLE mod_xml_operations (
                     id INTEGER PRIMARY KEY,
@@ -437,7 +477,8 @@ public class Program
                     dependency_name TEXT NOT NULL,
                     source_file TEXT,
                     line_number INTEGER,
-                    pattern TEXT
+                    pattern TEXT,
+                    code_snippet TEXT
                 );
                 CREATE INDEX idx_csdep_mod ON mod_csharp_deps(mod_id);
                 CREATE INDEX idx_csdep_target ON mod_csharp_deps(dependency_type, dependency_name);
@@ -989,7 +1030,7 @@ public class Program
             _cautionCount = 0;
 
             // Scan for C# dependencies (DLLs and source files)
-            var deps = ScanCSharpDependencies(modDir, modName);
+            var deps = CSharpAnalyzer.ScanCSharpDependencies(modDir, modName);
             allDependencies.AddRange(deps);
 
             // Check for XML config
@@ -1158,27 +1199,79 @@ public class Program
             }
         }
 
-        // Show C# mod dependencies
+        // Show C# mod dependencies with meaningful grouping
         var modsWithDeps = results.Where(r => r.Dependencies.Count > 0).ToList();
         if (modsWithDeps.Any())
         {
-            Console.WriteLine("\n─── C# Mod XML Dependencies ───\n");
+            Console.WriteLine("\n─── C# Mod Analysis ───\n");
             foreach (var mod in modsWithDeps)
             {
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine($"◆ {mod.Name}");
                 Console.ResetColor();
-                
-                var grouped = mod.Dependencies.GroupBy(d => d.Type);
-                foreach (var group in grouped.OrderBy(g => g.Key))
+
+                // Group into meaningful categories
+                var harmonyPatches = mod.Dependencies.Where(d => d.Type.StartsWith("harmony_")).ToList();
+                var entityLookups = mod.Dependencies.Where(d => new[] {"item", "block", "buff", "entity_class", "recipe", "sound", "quest", "lootcontainer", "progression", "trader_info", "workstation"}.Contains(d.Type)).ToList();
+                var classExtensions = mod.Dependencies.Where(d => d.Type.StartsWith("extends_") || d.Type.StartsWith("implements_")).ToList();
+                var localization = mod.Dependencies.Where(d => d.Type == "localization").ToList();
+
+                if (harmonyPatches.Any())
                 {
-                    Console.Write($"    {group.Key}: ");
-                    Console.ForegroundColor = ConsoleColor.White;
-                    Console.WriteLine(string.Join(", ", group.Select(d => d.Name).Distinct().Take(10)));
+                    var prefixCount = harmonyPatches.Count(h => h.Type == "harmony_prefix");
+                    var postfixCount = harmonyPatches.Count(h => h.Type == "harmony_postfix");
+                    var transpilerCount = harmonyPatches.Count(h => h.Type == "harmony_transpiler");
+                    var targets = harmonyPatches.Select(h => h.Name).Distinct().Take(5);
+
+                    Console.Write("    ");
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.Write("Harmony Patches: ");
                     Console.ResetColor();
-                    if (group.Select(d => d.Name).Distinct().Count() > 10)
-                        Console.WriteLine($"           ... and {group.Select(d => d.Name).Distinct().Count() - 10} more");
+                    Console.Write($"{harmonyPatches.Count} (");
+                    if (prefixCount > 0) Console.Write($"{prefixCount} prefix");
+                    if (postfixCount > 0) Console.Write($"{(prefixCount > 0 ? ", " : "")}{postfixCount} postfix");
+                    if (transpilerCount > 0) Console.Write($"{((prefixCount + postfixCount) > 0 ? ", " : "")}{transpilerCount} transpiler");
+                    Console.WriteLine(")");
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine($"      Targets: {string.Join(", ", targets)}{(harmonyPatches.Select(h => h.Name).Distinct().Count() > 5 ? $" +{harmonyPatches.Select(h => h.Name).Distinct().Count() - 5} more" : "")}");
+                    Console.ResetColor();
                 }
+
+                if (entityLookups.Any())
+                {
+                    var grouped = entityLookups.GroupBy(d => d.Type).OrderByDescending(g => g.Count());
+                    Console.Write("    ");
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Write("XML Entity Lookups: ");
+                    Console.ResetColor();
+                    Console.WriteLine($"{entityLookups.Count} references");
+                    foreach (var group in grouped.Take(3))
+                    {
+                        var typeLabel = group.Key switch
+                        {
+                            "item" => "Items",
+                            "block" => "Blocks",
+                            "buff" => "Buffs",
+                            "entity_class" => "Entities",
+                            "recipe" => "Recipes",
+                            "sound" => "Sounds",
+                            _ => group.Key
+                        };
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($"      {typeLabel}: {string.Join(", ", group.Select(d => d.Name).Distinct().Take(5))}{(group.Select(d => d.Name).Distinct().Count() > 5 ? " ..." : "")}");
+                        Console.ResetColor();
+                    }
+                }
+
+                if (classExtensions.Any())
+                {
+                    Console.Write("    ");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.Write("Class Extensions: ");
+                    Console.ResetColor();
+                    Console.WriteLine(string.Join(", ", classExtensions.Select(d => d.Name).Distinct().Take(5)));
+                }
+
                 Console.WriteLine();
             }
         }
@@ -1197,230 +1290,6 @@ public class Program
         }
 
         return (totalConflicts > 0 || crossModConflicts.Any()) ? 1 : 0;
-    }
-
-    // Cache for decompiled mod code to avoid repeated decompilation
-    private static readonly Dictionary<string, string> _decompileCache = new();
-    private static string? _decompiledModsDir;
-
-    private static List<CSharpDependency> ScanCSharpDependencies(string modDir, string modName)
-    {
-        var deps = new List<CSharpDependency>();
-
-        // Patterns that indicate XML dependencies in C# code
-        var patterns = GetXmlDependencyPatterns();
-
-        // Find DLLs in the mod folder (skip 0Harmony.dll and other framework DLLs)
-        var modDlls = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
-            .Where(dll => !Path.GetFileName(dll).StartsWith("0Harmony", StringComparison.OrdinalIgnoreCase))
-            .Where(dll => !Path.GetFileName(dll).Equals("Mono.Cecil.dll", StringComparison.OrdinalIgnoreCase))
-            .Where(dll => !Path.GetFileName(dll).Contains("System."))
-            .Where(dll => !Path.GetFileName(dll).Contains("Microsoft."))
-            .ToList();
-
-        if (modDlls.Count == 0)
-            return deps;
-
-        // Decompile each mod DLL and scan
-        foreach (var dllPath in modDlls)
-        {
-            var csFiles = DecompileModDll(dllPath, modName);
-            if (csFiles.Count == 0) continue;
-
-            foreach (var csFile in csFiles)
-            {
-                try
-                {
-                    var content = File.ReadAllText(csFile);
-                    var lines = content.Split('\n');
-                    var fileName = Path.GetFileName(csFile);
-
-                    foreach (var (pattern, type, nameGroup) in patterns)
-                    {
-                        var regex = new Regex(pattern, RegexOptions.Compiled);
-                        
-                        for (int i = 0; i < lines.Length; i++)
-                        {
-                            var matches = regex.Matches(lines[i]);
-                            foreach (Match match in matches)
-                            {
-                                var name = match.Groups[nameGroup].Value;
-                                if (!string.IsNullOrEmpty(name) && !name.Contains("{") && !name.Contains("+"))
-                                {
-                                    deps.Add(new CSharpDependency(modName, type, name, fileName, i + 1, match.Value.Trim()));
-                                }
-                            }
-                        }
-                    }
-                }
-                catch { /* Skip unreadable files */ }
-            }
-        }
-
-        return deps;
-    }
-
-    private static (string Pattern, string Type, int NameGroup)[] GetXmlDependencyPatterns()
-    {
-        return new (string Pattern, string Type, int NameGroup)[]
-        {
-            // Item lookups
-            (@"ItemClass\.GetItem\s*\(\s*""([^""]+)""\s*[,\)]", "item", 1),
-            (@"ItemClass\.GetItemClass\s*\(\s*""([^""]+)""\s*\)", "item", 1),
-            (@"new\s+ItemValue\s*\(\s*ItemClass\.GetItem\s*\(\s*""([^""]+)""\s*\)", "item", 1),
-            
-            // Block lookups
-            (@"Block\.GetBlockByName\s*\(\s*""([^""]+)""\s*\)", "block", 1),
-            (@"Block\.GetBlockValue\s*\(\s*""([^""]+)""\s*\)", "block", 1),
-            (@"ItemClass\.GetItem\s*\(\s*""([^""]+)""\s*\)\.Block", "block", 1),
-            
-            // Entity lookups
-            (@"EntityClass\.FromString\s*\(\s*""([^""]+)""\s*\)", "entity_class", 1),
-            (@"EntityFactory\.CreateEntity\s*\([^,]*,\s*""([^""]+)""\s*\)", "entity_class", 1),
-            
-            // Buff lookups
-            (@"BuffManager\.GetBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"BuffClass\.GetBuffClass\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"\.AddBuff\s*\(\s*""([^""]+)""\s*[\),]", "buff", 1),
-            (@"\.RemoveBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"\.HasBuff\s*\(\s*""([^""]+)""\s*\)", "buff", 1),
-            (@"BuffManager\.Server_AddBuff\s*\([^,]*,\s*""([^""]+)""\s*\)", "buff", 1),
-            
-            // Recipe lookups
-            (@"CraftingManager\.GetRecipe\s*\(\s*""([^""]+)""\s*\)", "recipe", 1),
-            (@"Recipe\.GetRecipe\s*\(\s*""([^""]+)""\s*\)", "recipe", 1),
-            
-            // Sound lookups - various patterns
-            (@"Manager\.Play\s*\([^,]*,\s*""([^""]+)""\s*[\),]", "sound", 1),
-            (@"Manager\.BroadcastPlay\s*\([^,]*,\s*""([^""]+)""\s*[\),]", "sound", 1),
-            (@"Audio\.Manager\.Play\s*\(\s*""([^""]+)""\s*[\),]", "sound", 1),
-            (@"Manager\.PlayInsidePlayerHead\s*\(\s*""([^""]+)""\s*[,\)]", "sound", 1),
-            (@"PlayInsidePlayerHead\s*\(\s*""([^""]+)""\s*[,\)]", "sound", 1),
-            // Constant strings that look like sound names (fallbacks)
-            (@"=\s*""([\w\-]+destroy)""\s*;", "sound", 1),
-            (@"=\s*""([\w\-]+shatter)""\s*;", "sound", 1),
-            (@"=\s*""(sound_[\w\-]+)""\s*;", "sound", 1),
-            
-            // Quest lookups
-            (@"QuestClass\.GetQuest\s*\(\s*""([^""]+)""\s*\)", "quest", 1),
-            
-            // Loot lookups
-            (@"LootContainer\.GetLootContainer\s*\(\s*""([^""]+)""\s*\)", "lootcontainer", 1),
-            
-            // Progression lookups
-            (@"Progression\.GetProgressionClass\s*\(\s*""([^""]+)""\s*\)", "progression", 1),
-            
-            // Trader lookups
-            (@"TraderInfo\.GetTraderInfo\s*\(\s*""([^""]+)""\s*\)", "trader_info", 1),
-            
-            // Workstation/Action lookups
-            (@"Workstation\s*=\s*""([^""]+)""", "workstation", 1),
-            
-            // Localization key lookups (possible item/block name refs)
-            (@"Localization\.Get\s*\(\s*""([^""]+)""\s*\)", "localization", 1),
-            
-            // Harmony patches - class being patched
-            (@"\[HarmonyPatch\s*\(\s*typeof\s*\(\s*([\w\.]+)\s*\)", "harmony_class", 1),
-            (@"\[HarmonyPatch\s*\(\s*""([^""]+)""\s*\)", "harmony_method", 1),
-            (@"\[HarmonyPatch\s*\(\s*typeof\s*\([^)]+\)\s*,\s*""([^""]+)""\s*\)", "harmony_method", 1),
-            (@"\[HarmonyPrefix\]", "harmony_prefix", 0),
-            (@"\[HarmonyPostfix\]", "harmony_postfix", 0),
-            (@"\[HarmonyTranspiler\]", "harmony_transpiler", 0),
-            
-            // Inheritance patterns
-            (@":\s*(ItemAction\w*)\b", "extends_itemaction", 1),
-            (@":\s*(Block\w*)\b", "extends_block", 1),
-            (@":\s*(EntityAlive|Entity\w*)\b", "extends_entity", 1),
-            (@":\s*(MinEventAction\w*)\b", "extends_mineventaction", 1),
-            (@":\s*(IModApi)\b", "implements_imodapi", 1),
-        };
-    }
-
-    private static List<string> DecompileModDll(string dllPath, string modName)
-    {
-        var csFiles = new List<string>();
-        
-        // Check cache first
-        if (_decompileCache.TryGetValue(dllPath, out var cachedDir))
-        {
-            if (Directory.Exists(cachedDir))
-                return Directory.GetFiles(cachedDir, "*.cs", SearchOption.AllDirectories).ToList();
-        }
-
-        // Create temp directory for decompiled output
-        if (_decompiledModsDir == null)
-        {
-            _decompiledModsDir = Path.Combine(Path.GetTempPath(), "XmlIndexer_ModDecompile_" + Process.GetCurrentProcess().Id);
-            Directory.CreateDirectory(_decompiledModsDir);
-            
-            // Register cleanup on exit
-            AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupDecompiledMods();
-        }
-
-        var dllName = Path.GetFileNameWithoutExtension(dllPath);
-        var outputDir = Path.Combine(_decompiledModsDir, modName, dllName);
-        
-        try
-        {
-            Directory.CreateDirectory(outputDir);
-            
-            // Run ilspycmd to decompile
-            var psi = new ProcessStartInfo
-            {
-                FileName = "ilspycmd",
-                Arguments = $"\"{dllPath}\" -p -o \"{outputDir}\" -lv Latest",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"    Warning: ilspycmd not found. Install with: dotnet tool install -g ilspycmd");
-                Console.ResetColor();
-                return csFiles;
-            }
-
-            process.WaitForExit(30000); // 30 second timeout
-            
-            if (process.ExitCode == 0 && Directory.Exists(outputDir))
-            {
-                csFiles = Directory.GetFiles(outputDir, "*.cs", SearchOption.AllDirectories).ToList();
-                _decompileCache[dllPath] = outputDir;
-            }
-        }
-        catch (Exception ex)
-        {
-            // ilspycmd not installed or other error - silently skip
-            if (ex.Message.Contains("not recognized") || ex.Message.Contains("not found"))
-            {
-                // Only warn once
-                if (!_decompileCache.ContainsKey("__warned__"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"    Note: Install ilspycmd for C# mod analysis: dotnet tool install -g ilspycmd");
-                    Console.ResetColor();
-                    _decompileCache["__warned__"] = "";
-                }
-            }
-        }
-
-        return csFiles;
-    }
-
-    private static void CleanupDecompiledMods()
-    {
-        if (_decompiledModsDir != null && Directory.Exists(_decompiledModsDir))
-        {
-            try
-            {
-                Directory.Delete(_decompiledModsDir, true);
-            }
-            catch { /* Best effort cleanup */ }
-        }
     }
 
     private static void AnalyzeModXmlSilent(string filePath, SqliteConnection db, string modName, List<XmlRemoval> removals)
@@ -1924,7 +1793,7 @@ public class Program
 
             foreach (var dll in dlls)
             {
-                var files = DecompileModDll(dll, modName);
+                var files = CSharpAnalyzer.DecompileModDll(dll, modName);
                 if (files.Count > 0)
                 {
                     dllsDecompiled++;
@@ -1988,9 +1857,11 @@ public class Program
 
         using var transaction = db.BeginTransaction();
 
-        foreach (var modDir in modDirs)
+        for (int loadOrder = 0; loadOrder < modDirs.Count; loadOrder++)
         {
-            var modName = Path.GetFileName(modDir);
+            var modDir = modDirs[loadOrder];
+            var folderName = Path.GetFileName(modDir);
+            var modName = folderName; // May be overridden by DisplayName later
             var configPath = Path.Combine(modDir, "Config");
             var hasXml = Directory.Exists(configPath) && Directory.GetFiles(configPath, "*.xml").Length > 0;
             var hasDll = Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories)
@@ -2018,9 +1889,11 @@ public class Program
             // Insert mod record
             using (var cmd = db.CreateCommand())
             {
-                cmd.CommandText = @"INSERT INTO mods (name, has_xml, has_dll, display_name, description, author, version, website) 
-                    VALUES ($name, $hasXml, $hasDll, $displayName, $description, $author, $version, $website)";
+                cmd.CommandText = @"INSERT INTO mods (name, folder_name, load_order, has_xml, has_dll, display_name, description, author, version, website) 
+                    VALUES ($name, $folderName, $loadOrder, $hasXml, $hasDll, $displayName, $description, $author, $version, $website)";
                 cmd.Parameters.AddWithValue("$name", modName);
+                cmd.Parameters.AddWithValue("$folderName", folderName);
+                cmd.Parameters.AddWithValue("$loadOrder", loadOrder);
                 cmd.Parameters.AddWithValue("$hasXml", hasXml ? 1 : 0);
                 cmd.Parameters.AddWithValue("$hasDll", hasDll ? 1 : 0);
                 cmd.Parameters.AddWithValue("$displayName", displayName ?? (object)DBNull.Value);
@@ -2054,19 +1927,20 @@ public class Program
             }
 
             // Analyze C# dependencies
-            var deps = ScanCSharpDependencies(modDir, modName);
+            var deps = CSharpAnalyzer.ScanCSharpDependencies(modDir, modName);
             foreach (var dep in deps)
             {
                 using var cmd = db.CreateCommand();
-                cmd.CommandText = @"INSERT INTO mod_csharp_deps 
-                    (mod_id, dependency_type, dependency_name, source_file, line_number, pattern)
-                    VALUES ($modId, $type, $name, $file, $line, $pattern)";
+                cmd.CommandText = @"INSERT INTO mod_csharp_deps
+                    (mod_id, dependency_type, dependency_name, source_file, line_number, pattern, code_snippet)
+                    VALUES ($modId, $type, $name, $file, $line, $pattern, $snippet)";
                 cmd.Parameters.AddWithValue("$modId", modId);
                 cmd.Parameters.AddWithValue("$type", dep.Type);
                 cmd.Parameters.AddWithValue("$name", dep.Name);
                 cmd.Parameters.AddWithValue("$file", dep.SourceFile);
                 cmd.Parameters.AddWithValue("$line", dep.Line);
                 cmd.Parameters.AddWithValue("$pattern", dep.Pattern);
+                cmd.Parameters.AddWithValue("$snippet", (object?)dep.CodeSnippet ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
 
@@ -2118,18 +1992,18 @@ public class Program
                     if (status == ImpactStatus.Conflict) conflicts++;
                     else if (status == ImpactStatus.Caution) cautions++;
 
-                    // Extract target if possible
-                    var target = ExtractTargetFromXPath(xpath);
+                    // Extract target using enhanced ModAnalyzer parser
+                    var target = ModAnalyzer.ExtractTargetFromXPath(xpath);
                     
                     // Extract property name and value from xpath (e.g., @value, @name)
-                    var propertyName = ExtractPropertyFromXPath(xpath);
+                    var propertyName = ModAnalyzer.ExtractPropertyFromXPath(xpath);
                     
                     // Get the new value - either from element text, or from xpath for attribute sets
                     var newValue = element.Value?.Trim();
                     if (string.IsNullOrEmpty(newValue))
                     {
                         // For setattribute ops, the value might be in the xpath itself
-                        newValue = ExtractValueFromXPath(xpath);
+                        newValue = ModAnalyzer.ExtractValueFromXPath(xpath);
                     }
                     
                     // Store element content for context (limited)
@@ -2246,6 +2120,113 @@ public class Program
         }
 
         transaction.Commit();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AD-HOC SQL QUERY - For debugging and exploration
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private static int RunQuery(string sql)
+    {
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        Console.WriteLine($"╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine($"║  SQL QUERY RESULTS                                               ║");
+        Console.WriteLine($"╚══════════════════════════════════════════════════════════════════╝\n");
+        Console.WriteLine($"Query: {sql}\n");
+
+        try
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = sql;
+            using var reader = cmd.ExecuteReader();
+
+            // Get column names
+            var columns = new List<string>();
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                columns.Add(reader.GetName(i));
+            }
+
+            // Read all rows into memory to calculate column widths
+            var rows = new List<string[]>();
+            while (reader.Read())
+            {
+                var values = new string[reader.FieldCount];
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    values[i] = reader.IsDBNull(i) ? "(null)" : reader.GetValue(i)?.ToString() ?? "";
+                }
+                rows.Add(values);
+                if (rows.Count >= 100) break;
+            }
+
+            // Calculate column widths (min 10, max 60)
+            var widths = new int[columns.Count];
+            for (int i = 0; i < columns.Count; i++)
+            {
+                widths[i] = Math.Max(columns[i].Length, 10);
+                foreach (var row in rows)
+                {
+                    widths[i] = Math.Max(widths[i], Math.Min(row[i].Length, 60));
+                }
+                widths[i] = Math.Min(widths[i], 60);
+            }
+
+            // Print header
+            Console.WriteLine(string.Join(" | ", columns.Select((c, i) => c.PadRight(widths[i]))));
+            Console.WriteLine(string.Join("─┼─", widths.Select(w => new string('─', w))));
+
+            // Print rows
+            foreach (var row in rows)
+            {
+                var line = string.Join(" | ", row.Select((v, i) => 
+                    v.Length > widths[i] ? v.Substring(0, widths[i] - 3) + "..." : v.PadRight(widths[i])));
+                Console.WriteLine(line);
+            }
+
+            Console.WriteLine($"\n{rows.Count} row(s) returned" + (rows.Count >= 100 ? " (limit 100)" : ""));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Query error: {ex.Message}");
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private static int TestXPathParsing(string xpath)
+    {
+        Console.WriteLine($"Testing XPath: {xpath}\n");
+        
+        var target = ModAnalyzer.ExtractTargetFromXPath(xpath);
+        var property = ModAnalyzer.ExtractPropertyFromXPath(xpath);
+        
+        if (target != null)
+        {
+            Console.WriteLine($"✓ Target extracted:");
+            Console.WriteLine($"  Type:      {target.Type}");
+            Console.WriteLine($"  Name:      {target.Name}");
+            Console.WriteLine($"  Selector:  [{target.SelectorAttribute}='{target.SelectorValue}']");
+            Console.WriteLine($"  Fragile:   {target.IsFragile}");
+        }
+        else
+        {
+            Console.WriteLine("✗ No target extracted");
+        }
+        
+        if (property != null)
+        {
+            Console.WriteLine($"\n✓ Property: {property}");
+        }
+        else
+        {
+            Console.WriteLine("\n✗ No property extracted");
+        }
+        
+        return 0;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2570,6 +2551,120 @@ public class Program
     // REPORT GENERATION - Export to HTML, Markdown, JSON
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Generate multi-page HTML report site.
+    /// Creates a timestamped folder with index.html, entities.html, mods.html, etc.
+    /// </summary>
+    /// <summary>
+    /// Complete single-command operation: rebuild database + generate report with profiling.
+    /// </summary>
+    private static int GenerateFullReport(string modsFolder, string outputDir, bool openAfter)
+    {
+        var totalSw = Stopwatch.StartNew();
+
+        Console.WriteLine("╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  7D2D MOD ECOSYSTEM REPORT - Full Build                          ║");
+        Console.WriteLine("╚══════════════════════════════════════════════════════════════════╝\n");
+
+        Console.WriteLine($"Game Path:  {_gamePath}");
+        Console.WriteLine($"Mods Path:  {modsFolder}");
+        Console.WriteLine($"Output:     {outputDir}\n");
+
+        // STEP 1: Build/rebuild the database
+        var analyzeResult = FullAnalyze(modsFolder);
+        if (analyzeResult != 0)
+        {
+            Console.WriteLine("\n✗ Database build failed");
+            return analyzeResult;
+        }
+
+        // STEP 2: Build dependency graph
+        Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Console.WriteLine("BUILDING DEPENDENCY GRAPH");
+        Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+        BuildDependencyGraph();  // Return code indicates conflict severity, not failure
+
+        // STEP 3: Generate report
+        Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Console.WriteLine("GENERATING REPORT");
+        Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+        Directory.CreateDirectory(outputDir);
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Generate the multi-page site (time will be injected after)
+        var siteFolder = ReportSiteGenerator.Generate(db, outputDir, 0);
+        var indexPath = Path.Combine(siteFolder, "index.html");
+
+        totalSw.Stop();
+        var totalTimeMs = totalSw.ElapsedMilliseconds;
+
+        // Inject final build time into index.html
+        var indexContent = File.ReadAllText(indexPath);
+        var timeStr = $"{totalTimeMs / 1000.0:F1}s";
+        indexContent = indexContent.Replace("<!--BUILD_TIME_PLACEHOLDER-->", $" • Built in {timeStr}");
+        indexContent = indexContent.Replace("<!--BUILD_TIME_STAT_PLACEHOLDER-->",
+            $"<div class=\"stat\"><span class=\"stat-value\">{timeStr}</span><span class=\"stat-label\">Total Time</span></div>");
+        File.WriteAllText(indexPath, indexContent);
+
+        Console.WriteLine($"\n✓ Report generated: {siteFolder}");
+        Console.WriteLine($"  Total time: {timeStr}");
+
+        // Open in browser if requested
+        if (openAfter)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(indexPath) { UseShellExecute = true });
+                Console.WriteLine("  ✓ Opened in browser");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ℹ️  Could not auto-open report: {ex.Message}");
+            }
+        }
+
+        return 0;
+    }
+
+    private static int GenerateMultiPageReport(string outputDir, bool openAfter)
+    {
+        Directory.CreateDirectory(outputDir);
+
+        Console.WriteLine("╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  GENERATING MULTI-PAGE REPORT                                    ║");
+        Console.WriteLine("╚══════════════════════════════════════════════════════════════════╝\n");
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Generate the multi-page site
+        var siteFolder = ReportSiteGenerator.Generate(db, outputDir);
+        var indexPath = Path.Combine(siteFolder, "index.html");
+
+        Console.WriteLine($"\n✓ Multi-page report generated: {siteFolder}");
+
+        // Open in browser if requested
+        if (openAfter)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(indexPath) { UseShellExecute = true });
+                Console.WriteLine("  ✓ Opened in browser");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ℹ️  Could not auto-open report: {ex.Message}");
+            }
+        }
+
+        return 0;
+    }
+
+    // Legacy single-file report generation (kept for backwards compatibility)
     private static int GenerateReports(string outputDir, HashSet<string> formats)
     {
         Directory.CreateDirectory(outputDir);
@@ -3632,5 +3727,279 @@ public class {className}
             Console.Error.WriteLine($"Error detecting conflicts: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Builds the transitive reference graph and detects indirect conflicts.
+    /// This enables impact analysis ("what depends on X?") and finds mod conflicts
+    /// that span multiple entities through inheritance/buff chains.
+    /// </summary>
+    private static int BuildDependencyGraph()
+    {
+        if (!File.Exists(_dbPath))
+        {
+            Console.Error.WriteLine($"Error: Database not found: {_dbPath}");
+            return 1;
+        }
+
+        Console.WriteLine("╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  BUILDING ENTITY DEPENDENCY GRAPH                                ║");
+        Console.WriteLine("╚══════════════════════════════════════════════════════════════════╝\n");
+
+        var totalSw = Stopwatch.StartNew();
+
+        try
+        {
+            // Step 1: Build transitive references
+            Console.WriteLine("[Step 1] Computing transitive references...");
+            Console.WriteLine("         (following extends, buffs, loot entries, recipes, etc.)");
+            var transBuilder = new TransitiveReferenceBuilder(_dbPath!);
+            var transResult = transBuilder.BuildTransitiveReferences();
+            Console.WriteLine($"         ✓ {transResult}");
+            Console.WriteLine();
+
+            // Step 2: Detect indirect conflicts
+            Console.WriteLine("[Step 2] Detecting indirect mod conflicts...");
+            Console.WriteLine("         (finding mod interactions through shared dependencies)");
+            var conflictDetector = new IndirectConflictDetector(_dbPath!);
+            var conflictResult = conflictDetector.DetectIndirectConflicts();
+            Console.WriteLine($"         ✓ {conflictResult}");
+            Console.WriteLine();
+
+            // Summary
+            Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            Console.WriteLine($"  Total time: {totalSw.ElapsedMilliseconds}ms");
+            Console.WriteLine();
+            Console.WriteLine("  Now you can query:");
+            Console.WriteLine($"    XmlIndexer impact-analysis {Path.GetFileName(_dbPath)} buff buffCoffeeBuzz");
+            Console.WriteLine($"    sqlite3 {Path.GetFileName(_dbPath)} \"SELECT * FROM v_inheritance_hotspots LIMIT 10\"");
+            Console.WriteLine($"    sqlite3 {Path.GetFileName(_dbPath)} \"SELECT * FROM v_conflict_summary\"");
+            Console.WriteLine();
+
+            return conflictResult.HighCount > 0 ? 2 : (conflictResult.MediumCount > 0 ? 1 : 0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error building dependency graph: {ex.Message}");
+            if (_verbose)
+                Console.Error.WriteLine(ex.StackTrace);
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Shows what entities depend on a given entity (using transitive references).
+    /// Answers the question: "If I change X, what else is affected?"
+    /// </summary>
+    private static int ImpactAnalysis(string type, string name)
+    {
+        if (!File.Exists(_dbPath))
+        {
+            Console.Error.WriteLine($"Error: Database not found: {_dbPath}");
+            return 1;
+        }
+
+        Console.WriteLine($"╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine($"║  IMPACT ANALYSIS: {type} '{name}'");
+        Console.WriteLine($"╚══════════════════════════════════════════════════════════════════╝\n");
+
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
+
+        // Find the entity
+        using var defCmd = db.CreateCommand();
+        defCmd.CommandText = @"SELECT id, file_path, line_number, extends 
+                               FROM xml_definitions 
+                               WHERE definition_type = $type AND name = $name";
+        defCmd.Parameters.AddWithValue("$type", type);
+        defCmd.Parameters.AddWithValue("$name", name);
+
+        using var defReader = defCmd.ExecuteReader();
+        if (!defReader.Read())
+        {
+            Console.WriteLine($"  Entity not found: {type} '{name}'");
+            Console.WriteLine("  Tip: Use 'XmlIndexer search <db> <pattern>' to find entities");
+            return 1;
+        }
+
+        var entityId = defReader.GetInt32(0);
+        var filePath = defReader.GetString(1);
+        var lineNumber = defReader.GetInt32(2);
+        var extends = defReader.IsDBNull(3) ? null : defReader.GetString(3);
+        defReader.Close();
+
+        Console.WriteLine($"  Definition: {filePath}:{lineNumber}");
+        if (extends != null)
+            Console.WriteLine($"  Extends: {extends}");
+        Console.WriteLine();
+
+        // Check if transitive_references table exists and has data
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM transitive_references";
+        long transCount = 0;
+        try
+        {
+            transCount = (long)checkCmd.ExecuteScalar()!;
+        }
+        catch
+        {
+            Console.WriteLine("  ⚠ Transitive references not built yet!");
+            Console.WriteLine($"  Run: XmlIndexer build-dependency-graph {Path.GetFileName(_dbPath)}");
+            return 1;
+        }
+
+        if (transCount == 0)
+        {
+            Console.WriteLine("  ⚠ Transitive references table is empty!");
+            Console.WriteLine($"  Run: XmlIndexer build-dependency-graph {Path.GetFileName(_dbPath)}");
+            return 1;
+        }
+
+        // Find what depends on this entity (entities where this is the TARGET)
+        Console.WriteLine("═══ ENTITIES THAT DEPEND ON THIS ════════════════════════════════════");
+        Console.WriteLine();
+
+        using var depCmd = db.CreateCommand();
+        depCmd.CommandText = @"
+            SELECT 
+                d.definition_type, d.name, tr.path_depth, tr.reference_types
+            FROM transitive_references tr
+            JOIN xml_definitions d ON tr.source_def_id = d.id
+            WHERE tr.target_def_id = $entityId
+            ORDER BY tr.path_depth, d.definition_type, d.name
+            LIMIT 100";
+        depCmd.Parameters.AddWithValue("$entityId", entityId);
+
+        using var depReader = depCmd.ExecuteReader();
+        int dependentCount = 0;
+        int lastDepth = -1;
+
+        while (depReader.Read())
+        {
+            var depType = depReader.GetString(0);
+            var depName = depReader.GetString(1);
+            var depth = depReader.GetInt32(2);
+            var refTypes = depReader.GetString(3);
+
+            if (depth != lastDepth)
+            {
+                Console.WriteLine($"  ── Depth {depth} ({(depth == 1 ? "direct" : $"{depth} hops away")}) ──");
+                lastDepth = depth;
+            }
+
+            Console.WriteLine($"    [{depType}] {depName}  ({refTypes})");
+            dependentCount++;
+        }
+        depReader.Close();
+
+        if (dependentCount == 0)
+        {
+            Console.WriteLine("  No entities depend on this one.");
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  Total: {dependentCount} dependent entities");
+        }
+
+        // Find what this entity depends on (entities where this is the SOURCE)
+        Console.WriteLine();
+        Console.WriteLine("═══ ENTITIES THIS DEPENDS ON ═════════════════════════════════════════");
+        Console.WriteLine();
+
+        using var reqCmd = db.CreateCommand();
+        reqCmd.CommandText = @"
+            SELECT 
+                d.definition_type, d.name, tr.path_depth, tr.reference_types
+            FROM transitive_references tr
+            JOIN xml_definitions d ON tr.target_def_id = d.id
+            WHERE tr.source_def_id = $entityId
+            ORDER BY tr.path_depth, d.definition_type, d.name
+            LIMIT 100";
+        reqCmd.Parameters.AddWithValue("$entityId", entityId);
+
+        using var reqReader = reqCmd.ExecuteReader();
+        int requirementCount = 0;
+        lastDepth = -1;
+
+        while (reqReader.Read())
+        {
+            var reqType = reqReader.GetString(0);
+            var reqName = reqReader.GetString(1);
+            var depth = reqReader.GetInt32(2);
+            var refTypes = reqReader.GetString(3);
+
+            if (depth != lastDepth)
+            {
+                Console.WriteLine($"  ── Depth {depth} ({(depth == 1 ? "direct" : $"{depth} hops away")}) ──");
+                lastDepth = depth;
+            }
+
+            Console.WriteLine($"    [{reqType}] {reqName}  ({refTypes})");
+            requirementCount++;
+        }
+        reqReader.Close();
+
+        if (requirementCount == 0)
+        {
+            Console.WriteLine("  This entity has no dependencies.");
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  Total: {requirementCount} required entities");
+        }
+
+        // Check for mod conflicts involving this entity
+        Console.WriteLine();
+        Console.WriteLine("═══ MOD CONFLICTS INVOLVING THIS ENTITY ══════════════════════════════");
+        Console.WriteLine();
+
+        using var conflictCmd = db.CreateCommand();
+        conflictCmd.CommandText = @"
+            SELECT severity, pattern_id, pattern_name, explanation
+            FROM mod_indirect_conflicts
+            WHERE shared_entity_id = $entityId
+            ORDER BY 
+                CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                pattern_id
+            LIMIT 20";
+        conflictCmd.Parameters.AddWithValue("$entityId", entityId);
+
+        using var conflictReader = conflictCmd.ExecuteReader();
+        int conflictCount = 0;
+
+        while (conflictReader.Read())
+        {
+            var severity = conflictReader.GetString(0).ToUpper();
+            var patternId = conflictReader.GetString(1);
+            var patternName = conflictReader.IsDBNull(2) ? "" : conflictReader.GetString(2);
+            var explanation = conflictReader.IsDBNull(3) ? "" : conflictReader.GetString(3);
+
+            ConsoleColor color = severity switch
+            {
+                "HIGH" => ConsoleColor.Red,
+                "MEDIUM" => ConsoleColor.Yellow,
+                _ => ConsoleColor.DarkGray
+            };
+
+            Console.ForegroundColor = color;
+            Console.Write($"  [{severity}] ");
+            Console.ResetColor();
+            Console.WriteLine($"{patternId}: {patternName}");
+            Console.WriteLine($"         {explanation}");
+            Console.WriteLine();
+            conflictCount++;
+        }
+        conflictReader.Close();
+
+        if (conflictCount == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("  ✓ No mod conflicts involving this entity.");
+            Console.ResetColor();
+        }
+
+        return 0;
     }
 }
