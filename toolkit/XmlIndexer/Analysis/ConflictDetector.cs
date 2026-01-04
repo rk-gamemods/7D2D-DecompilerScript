@@ -31,23 +31,42 @@ public class ConflictDetector
         {
             GeneratedAt = DateTime.UtcNow.ToString("o"),
             DatabasePath = _dbPath,
+
+            // XPath-level conflicts
             RealConflicts = GetRealConflicts(db),
             DestructiveConflicts = GetDestructiveConflicts(db),
             ContestedEntities = GetContestedEntities(db),
             LoadOrderWinners = GetLoadOrderWinners(db),
-            CSharpXmlConflicts = GetCSharpXmlConflicts(db)
+            CSharpXmlConflicts = GetCSharpXmlConflicts(db),
+
+            // Effect-level conflicts
+            EffectOperationConflicts = GetEffectOperationConflicts(db),
+            SetOverridesAddConflicts = GetSetOverridesAddConflicts(db),
+            SynergisticStackingWarnings = GetSynergisticStacking(db),
+            MixedModifierInteractions = GetMixedModifierInteractions(db),
+            TriggeredEffectConflicts = GetTriggeredEffectConflicts(db),
+            PartialModifications = GetPartialModifications(db),
+            EffectSummaries = GetEffectSummaries(db)
         };
 
-        // Calculate summary
+        // Calculate summary including new effect-level conflicts
         report.Summary = new ConflictSummary
         {
             High = report.RealConflicts.Count(c => c.Severity == "HIGH") +
                    report.DestructiveConflicts.Count +
-                   report.CSharpXmlConflicts.Count,
+                   report.CSharpXmlConflicts.Count +
+                   report.EffectOperationConflicts.Count +
+                   report.SetOverridesAddConflicts.Count +
+                   report.TriggeredEffectConflicts.Count(c => c.Severity == "HIGH"),
             Medium = report.RealConflicts.Count(c => c.Severity == "MEDIUM") +
-                     report.ContestedEntities.Count(e => e.RiskLevel == "MEDIUM"),
+                     report.ContestedEntities.Count(e => e.RiskLevel == "MEDIUM") +
+                     report.SynergisticStackingWarnings.Count +
+                     report.MixedModifierInteractions.Count +
+                     report.PartialModifications.Count +
+                     report.TriggeredEffectConflicts.Count(c => c.Severity == "MEDIUM"),
             Low = report.RealConflicts.Count(c => c.Severity == "LOW") +
-                  report.ContestedEntities.Count(e => e.RiskLevel == "LOW"),
+                  report.ContestedEntities.Count(e => e.RiskLevel == "LOW") +
+                  report.TriggeredEffectConflicts.Count(c => c.Severity == "LOW"),
             TotalScore = CalculateTotalScore(report)
         };
 
@@ -306,6 +325,226 @@ public class ConflictDetector
         return actions;
     }
 
+    // ========================================================================
+    // Effect-Level Conflict Detection Methods
+    // ========================================================================
+
+    private List<EffectOperationConflict> GetEffectOperationConflicts(SqliteConnection db)
+    {
+        var conflicts = new List<EffectOperationConflict>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity_name, mod1, mod1_operation, mod2, mod2_operation, severity, reason
+            FROM v_effect_operation_conflicts
+            ORDER BY effect_name, parent_entity_name";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            conflicts.Add(new EffectOperationConflict
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntityName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                Mod1 = reader.IsDBNull(2) ? null : reader.GetString(2),
+                Mod1Operation = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Mod2 = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Mod2Operation = reader.IsDBNull(5) ? null : reader.GetString(5),
+                Severity = reader.GetString(6),
+                Reason = reader.IsDBNull(7) ? null : reader.GetString(7)
+            });
+        }
+
+        return conflicts;
+    }
+
+    private List<SetOverridesAddConflict> GetSetOverridesAddConflicts(SqliteConnection db)
+    {
+        var conflicts = new List<SetOverridesAddConflict>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity_name, add_mod, add_operation, add_value,
+                   set_mod, set_operation, set_value, add_load_order, set_load_order, outcome, severity
+            FROM v_set_overrides_add
+            ORDER BY effect_name, parent_entity_name";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            conflicts.Add(new SetOverridesAddConflict
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntityName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                AddMod = reader.IsDBNull(2) ? null : reader.GetString(2),
+                AddOperation = reader.IsDBNull(3) ? null : reader.GetString(3),
+                AddValue = reader.IsDBNull(4) ? null : reader.GetString(4),
+                SetMod = reader.IsDBNull(5) ? null : reader.GetString(5),
+                SetOperation = reader.IsDBNull(6) ? null : reader.GetString(6),
+                SetValue = reader.IsDBNull(7) ? null : reader.GetString(7),
+                AddLoadOrder = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                SetLoadOrder = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
+                Outcome = reader.IsDBNull(10) ? null : reader.GetString(10),
+                Severity = reader.GetString(11)
+            });
+        }
+
+        return conflicts;
+    }
+
+    private List<SynergisticStacking> GetSynergisticStacking(SqliteConnection db)
+    {
+        var warnings = new List<SynergisticStacking>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity_name, effect_operation, mod_count, mods, mod_values, severity, reason
+            FROM v_synergistic_stacking
+            ORDER BY mod_count DESC, effect_name";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            warnings.Add(new SynergisticStacking
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntityName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                EffectOperation = reader.IsDBNull(2) ? null : reader.GetString(2),
+                ModCount = reader.GetInt32(3),
+                Mods = reader.IsDBNull(4) ? new List<string>() : reader.GetString(4).Split(',').ToList(),
+                ModValues = reader.IsDBNull(5) ? null : reader.GetString(5),
+                Severity = reader.GetString(6),
+                Reason = reader.IsDBNull(7) ? null : reader.GetString(7)
+            });
+        }
+
+        return warnings;
+    }
+
+    private List<MixedModifierInteraction> GetMixedModifierInteractions(SqliteConnection db)
+    {
+        var interactions = new List<MixedModifierInteraction>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity_name, mod_count, mod_operations, base_mod_count, perc_mod_count, severity, reason
+            FROM v_mixed_modifier_interaction
+            ORDER BY mod_count DESC, effect_name";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            interactions.Add(new MixedModifierInteraction
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntityName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                ModCount = reader.GetInt32(2),
+                ModOperations = reader.IsDBNull(3) ? null : reader.GetString(3),
+                BaseModCount = reader.GetInt32(4),
+                PercModCount = reader.GetInt32(5),
+                Severity = reader.GetString(6),
+                Reason = reader.IsDBNull(7) ? null : reader.GetString(7)
+            });
+        }
+
+        return interactions;
+    }
+
+    private List<TriggeredEffectConflict> GetTriggeredEffectConflicts(SqliteConnection db)
+    {
+        var conflicts = new List<TriggeredEffectConflict>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT trigger_cvar, trigger_operation, mod_count, mods, details, severity, reason
+            FROM v_triggered_effect_conflicts
+            ORDER BY
+                CASE severity WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END,
+                mod_count DESC";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            conflicts.Add(new TriggeredEffectConflict
+            {
+                TriggerCVar = reader.IsDBNull(0) ? null : reader.GetString(0),
+                TriggerOperation = reader.IsDBNull(1) ? null : reader.GetString(1),
+                ModCount = reader.GetInt32(2),
+                Mods = reader.IsDBNull(3) ? new List<string>() : reader.GetString(3).Split(',').ToList(),
+                Details = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Severity = reader.IsDBNull(5) ? null : reader.GetString(5),
+                Reason = reader.IsDBNull(6) ? null : reader.GetString(6)
+            });
+        }
+
+        return conflicts;
+    }
+
+    private List<PartialModification> GetPartialModifications(SqliteConnection db)
+    {
+        var modifications = new List<PartialModification>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity_name, mod_name, modifies_operation, modifies_value,
+                   file_path, line_number, severity, reason
+            FROM v_partial_modifications
+            ORDER BY effect_name, mod_name";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            modifications.Add(new PartialModification
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntityName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                ModName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                ModifiesOperation = reader.IsDBNull(3) ? false : reader.GetInt32(3) == 1,
+                ModifiesValue = reader.IsDBNull(4) ? false : reader.GetInt32(4) == 1,
+                FilePath = reader.IsDBNull(5) ? null : reader.GetString(5),
+                LineNumber = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+                Severity = reader.GetString(7),
+                Reason = reader.IsDBNull(8) ? null : reader.GetString(8)
+            });
+        }
+
+        return modifications;
+    }
+
+    private List<EffectSummary> GetEffectSummaries(SqliteConnection db)
+    {
+        var summaries = new List<EffectSummary>();
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT effect_name, parent_entity, parent_entity_name, total_mods, mod_operations,
+                   set_count, add_count, perc_count, base_count, risk_level
+            FROM v_effect_summary
+            ORDER BY
+                CASE risk_level WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END,
+                total_mods DESC";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            summaries.Add(new EffectSummary
+            {
+                EffectName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ParentEntity = reader.IsDBNull(1) ? null : reader.GetString(1),
+                ParentEntityName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                TotalMods = reader.GetInt32(3),
+                ModOperations = reader.IsDBNull(4) ? null : reader.GetString(4),
+                SetCount = reader.GetInt32(5),
+                AddCount = reader.GetInt32(6),
+                PercCount = reader.GetInt32(7),
+                BaseCount = reader.GetInt32(8),
+                RiskLevel = reader.IsDBNull(9) ? null : reader.GetString(9)
+            });
+        }
+
+        return summaries;
+    }
+
     private int CalculateTotalScore(ConflictReport report)
     {
         int score = 0;
@@ -313,15 +552,23 @@ public class ConflictDetector
         // HIGH severity = 40 points each
         score += (report.RealConflicts.Count(c => c.Severity == "HIGH") +
                   report.DestructiveConflicts.Count +
-                  report.CSharpXmlConflicts.Count) * 40;
+                  report.CSharpXmlConflicts.Count +
+                  report.EffectOperationConflicts.Count +
+                  report.SetOverridesAddConflicts.Count +
+                  report.TriggeredEffectConflicts.Count(c => c.Severity == "HIGH")) * 40;
 
         // MEDIUM severity = 25 points each
         score += (report.RealConflicts.Count(c => c.Severity == "MEDIUM") +
-                  report.ContestedEntities.Count(e => e.RiskLevel == "MEDIUM")) * 25;
+                  report.ContestedEntities.Count(e => e.RiskLevel == "MEDIUM") +
+                  report.SynergisticStackingWarnings.Count +
+                  report.MixedModifierInteractions.Count +
+                  report.PartialModifications.Count +
+                  report.TriggeredEffectConflicts.Count(c => c.Severity == "MEDIUM")) * 25;
 
         // LOW severity = 10 points each
         score += (report.RealConflicts.Count(c => c.Severity == "LOW") +
-                  report.ContestedEntities.Count(e => e.RiskLevel == "LOW")) * 10;
+                  report.ContestedEntities.Count(e => e.RiskLevel == "LOW") +
+                  report.TriggeredEffectConflicts.Count(c => c.Severity == "LOW")) * 10;
 
         return score;
     }
@@ -335,11 +582,23 @@ public class ConflictReport
 {
     public string? GeneratedAt { get; set; }
     public string? DatabasePath { get; set; }
+
+    // XPath-level conflicts
     public List<XPathConflict> RealConflicts { get; set; } = new();
     public List<DestructiveConflict> DestructiveConflicts { get; set; } = new();
     public List<ConflictContestedEntity> ContestedEntities { get; set; } = new();
     public List<LoadOrderWinner> LoadOrderWinners { get; set; } = new();
     public List<CSharpXmlConflict> CSharpXmlConflicts { get; set; } = new();
+
+    // Effect-level conflicts (new)
+    public List<EffectOperationConflict> EffectOperationConflicts { get; set; } = new();
+    public List<SetOverridesAddConflict> SetOverridesAddConflicts { get; set; } = new();
+    public List<SynergisticStacking> SynergisticStackingWarnings { get; set; } = new();
+    public List<MixedModifierInteraction> MixedModifierInteractions { get; set; } = new();
+    public List<TriggeredEffectConflict> TriggeredEffectConflicts { get; set; } = new();
+    public List<PartialModification> PartialModifications { get; set; } = new();
+    public List<EffectSummary> EffectSummaries { get; set; } = new();
+
     public ConflictSummary Summary { get; set; } = new();
 }
 
@@ -437,4 +696,119 @@ public class CSharpXmlConflict
     public string? XPath { get; set; }
     public string? Severity { get; set; }
     public string? Reason { get; set; }
+}
+
+// ============================================================================
+// Effect-Level Conflict Models
+// ============================================================================
+
+/// <summary>
+/// Different operation types on same effect (e.g., perc_add vs perc_set) - HIGH severity
+/// </summary>
+public class EffectOperationConflict
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntityName { get; set; }
+    public string? Mod1 { get; set; }
+    public string? Mod1Operation { get; set; }
+    public string? Mod2 { get; set; }
+    public string? Mod2Operation { get; set; }
+    public string Severity { get; set; } = "HIGH";
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// SET operations overriding ADD operations - HIGH severity
+/// </summary>
+public class SetOverridesAddConflict
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntityName { get; set; }
+    public string? AddMod { get; set; }
+    public string? AddOperation { get; set; }
+    public string? AddValue { get; set; }
+    public string? SetMod { get; set; }
+    public string? SetOperation { get; set; }
+    public string? SetValue { get; set; }
+    public int AddLoadOrder { get; set; }
+    public int SetLoadOrder { get; set; }
+    public string? Outcome { get; set; }
+    public string Severity { get; set; } = "HIGH";
+}
+
+/// <summary>
+/// Multiple mods modifying same effect with additive operations - MEDIUM severity
+/// </summary>
+public class SynergisticStacking
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntityName { get; set; }
+    public string? EffectOperation { get; set; }
+    public int ModCount { get; set; }
+    public List<string> Mods { get; set; } = new();
+    public string? ModValues { get; set; }
+    public string Severity { get; set; } = "MEDIUM";
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Mixed base and percentage modifiers from different mods - MEDIUM severity
+/// </summary>
+public class MixedModifierInteraction
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntityName { get; set; }
+    public int ModCount { get; set; }
+    public string? ModOperations { get; set; }
+    public int BaseModCount { get; set; }
+    public int PercModCount { get; set; }
+    public string Severity { get; set; } = "MEDIUM";
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// CVar modifications from multiple mods - severity varies
+/// </summary>
+public class TriggeredEffectConflict
+{
+    public string? TriggerCVar { get; set; }
+    public string? TriggerOperation { get; set; }
+    public int ModCount { get; set; }
+    public List<string> Mods { get; set; } = new();
+    public string? Details { get; set; }
+    public string? Severity { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Mods changing @operation or @value but not both - MEDIUM severity
+/// </summary>
+public class PartialModification
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntityName { get; set; }
+    public string? ModName { get; set; }
+    public bool ModifiesOperation { get; set; }
+    public bool ModifiesValue { get; set; }
+    public string? FilePath { get; set; }
+    public int LineNumber { get; set; }
+    public string Severity { get; set; } = "MEDIUM";
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Summary of all modifications to a specific effect
+/// </summary>
+public class EffectSummary
+{
+    public string? EffectName { get; set; }
+    public string? ParentEntity { get; set; }
+    public string? ParentEntityName { get; set; }
+    public int TotalMods { get; set; }
+    public string? ModOperations { get; set; }
+    public int SetCount { get; set; }
+    public int AddCount { get; set; }
+    public int PercCount { get; set; }
+    public int BaseCount { get; set; }
+    public string? RiskLevel { get; set; }
 }
