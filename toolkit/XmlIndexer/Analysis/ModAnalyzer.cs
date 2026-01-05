@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Data.Sqlite;
+using XmlIndexer.Database;
 using XmlIndexer.Models;
 using XmlIndexer.Utils;
 
@@ -24,8 +25,9 @@ public class ModAnalyzer
 
     /// <summary>
     /// Analyzes all mods in a folder, detecting conflicts and C# dependencies.
+    /// Supports incremental processing - skips unchanged mod folders.
     /// </summary>
-    public int AnalyzeAllMods(string modsFolder)
+    public int AnalyzeAllMods(string modsFolder, bool forceRebuild = false)
     {
         if (!Directory.Exists(modsFolder))
         {
@@ -52,12 +54,64 @@ public class ModAnalyzer
         using var db = new SqliteConnection($"Data Source={_dbPath}");
         db.Open();
 
+        // Incremental processing: compute folder hashes
+        Console.WriteLine("[Phase 0] Checking mod folder hashes...");
+        var hashSw = Stopwatch.StartNew();
+        var currentHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var modDir in modDirs)
+        {
+            currentHashes[modDir] = ContentHasher.HashFolder(modDir, "*");
+        }
+        
+        List<string> changed, unchanged, newMods, deleted;
+        Dictionary<string, string> storedHashes;
+        
+        if (forceRebuild)
+        {
+            storedHashes = new Dictionary<string, string>();
+            changed = new List<string>();
+            unchanged = new List<string>();
+            newMods = modDirs;
+            deleted = new List<string>();
+            Console.WriteLine($"  Force rebuild - processing all {modDirs.Count} mods");
+        }
+        else
+        {
+            storedHashes = DatabaseBuilder.GetStoredHashes(db, "mod_folder");
+            (changed, unchanged, newMods, deleted) = DatabaseBuilder.CompareHashes(storedHashes, currentHashes);
+            Console.WriteLine($"  {unchanged.Count} unchanged, {changed.Count} modified, {newMods.Count} new, {deleted.Count} removed ({hashSw.ElapsedMilliseconds}ms)");
+        }
+
+        // Handle deleted mods
+        foreach (var modPath in deleted)
+        {
+            Console.WriteLine($"  Removing deleted mod: {Path.GetFileName(modPath)}");
+            DatabaseBuilder.DeleteModDataByPath(db, modPath);
+            DatabaseBuilder.DeleteFileHashes(db, new[] { modPath });
+        }
+
+        // Determine which mods to process
+        var toProcess = changed.Concat(newMods).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        
+        // If nothing to process and no deletions, skip
+        if (toProcess.Count == 0 && deleted.Count == 0)
+        {
+            Console.WriteLine("\n✓ All mods unchanged - skipping analysis ({0}ms)", sw.ElapsedMilliseconds);
+            return 0;
+        }
+
+        // Delete old data for changed mods
+        foreach (var modPath in changed)
+        {
+            DatabaseBuilder.DeleteModDataByPath(db, modPath);
+        }
+
         var results = new List<ModResult>();
         var allRemovals = new List<XmlRemoval>();
         var allDependencies = new List<CSharpDependency>();
 
-        // PHASE 1: Scan all mods
-        Console.WriteLine("[Phase 1] Scanning mods...");
+        // PHASE 1: Scan mods (only process changed/new, but collect data from all for conflict detection)
+        Console.WriteLine($"\n[Phase 1] Scanning mods ({toProcess.Count} to analyze)...");
         foreach (var modDir in modDirs)
         {
             var modName = Path.GetFileName(modDir);
@@ -83,13 +137,31 @@ public class ModAnalyzer
             }
 
             var removals = new List<XmlRemoval>();
+            
+            // Only write to DB for changed/new mods, but analyze all for conflict detection
+            bool writeToDb = toProcess.Contains(modDir);
+            
             foreach (var xmlFile in xmlFiles)
             {
-                AnalyzeModXmlSilent(xmlFile, db, modName, removals);
+                if (writeToDb)
+                {
+                    AnalyzeModXmlSilent(xmlFile, db, modName, removals);
+                }
+                else
+                {
+                    // Just collect removals for conflict detection
+                    AnalyzeModXmlForConflicts(xmlFile, modName, removals);
+                }
             }
             allRemovals.AddRange(removals);
 
             results.Add(new ModResult(modName, _conflictCount, _cautionCount, false, deps));
+            
+            // Update hash for processed mods
+            if (writeToDb)
+            {
+                DatabaseBuilder.UpsertFileHash(db, modDir, currentHashes[modDir], "mod_folder");
+            }
         }
 
         // PHASE 2: Cross-reference C# dependencies against XML removals
@@ -111,6 +183,30 @@ public class ModAnalyzer
         PrintAnalysisResults(results, allDependencies, crossModConflicts, sw.ElapsedMilliseconds, modsFolder);
 
         return (crossModConflicts.Any() || results.Any(r => r.Conflicts > 0)) ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Analyze mod XML for conflicts only (no DB writes) - for unchanged mods.
+    /// </summary>
+    private void AnalyzeModXmlForConflicts(string xmlPath, string modName, List<XmlRemoval> removals)
+    {
+        try
+        {
+            var doc = XDocument.Load(xmlPath, LoadOptions.SetLineInfo);
+            foreach (var op in doc.Descendants().Where(e => 
+                e.Name.LocalName is "remove" or "removeattribute" or "set" or "setattribute" or "append"))
+            {
+                var xpath = op.Attribute("xpath")?.Value;
+                if (string.IsNullOrEmpty(xpath)) continue;
+                
+                var target = ExtractTargetFromXPath(xpath);
+                if (target != null && op.Name.LocalName.StartsWith("remove"))
+                {
+                    removals.Add(new XmlRemoval(modName, target.Type, target.Name, Path.GetFileName(xmlPath)));
+                }
+            }
+        }
+        catch { /* Ignore parse errors for conflict detection */ }
     }
 
     /// <summary>
@@ -179,10 +275,43 @@ public class ModAnalyzer
             // Read ModInfo.xml
             var modInfo = ReadModInfo(modDir);
 
-            // Insert mod record with load order
-            using (var cmd = db.CreateCommand())
+            // Check if mod already exists and delete its old data first
+            long? existingModId = null;
+            using (var checkCmd = db.CreateCommand())
             {
-                cmd.CommandText = @"INSERT OR REPLACE INTO mods
+                checkCmd.CommandText = "SELECT id FROM mods WHERE name = $name";
+                checkCmd.Parameters.AddWithValue("$name", modName);
+                existingModId = checkCmd.ExecuteScalar() as long?;
+            }
+
+            if (existingModId != null)
+            {
+                // Delete old data for this mod (FK children first)
+                DatabaseBuilder.DeleteModDataById(db, existingModId.Value);
+                
+                // Update existing mod record
+                using var updateCmd = db.CreateCommand();
+                updateCmd.CommandText = @"UPDATE mods SET 
+                    folder_name = $folderName, load_order = $loadOrder, has_xml = $xml, has_dll = $dll,
+                    display_name = $displayName, description = $desc, author = $author, version = $version, website = $website
+                    WHERE id = $id";
+                updateCmd.Parameters.AddWithValue("$id", existingModId.Value);
+                updateCmd.Parameters.AddWithValue("$folderName", folderName);
+                updateCmd.Parameters.AddWithValue("$loadOrder", loadOrder);
+                updateCmd.Parameters.AddWithValue("$xml", hasXml ? 1 : 0);
+                updateCmd.Parameters.AddWithValue("$dll", hasDll ? 1 : 0);
+                updateCmd.Parameters.AddWithValue("$displayName", modInfo?.DisplayName ?? (object)DBNull.Value);
+                updateCmd.Parameters.AddWithValue("$desc", modInfo?.Description ?? (object)DBNull.Value);
+                updateCmd.Parameters.AddWithValue("$author", modInfo?.Author ?? (object)DBNull.Value);
+                updateCmd.Parameters.AddWithValue("$version", modInfo?.Version ?? (object)DBNull.Value);
+                updateCmd.Parameters.AddWithValue("$website", modInfo?.Website ?? (object)DBNull.Value);
+                updateCmd.ExecuteNonQuery();
+            }
+            else
+            {
+                // Insert new mod record
+                using var cmd = db.CreateCommand();
+                cmd.CommandText = @"INSERT INTO mods
                     (name, folder_name, load_order, has_xml, has_dll, display_name, description, author, version, website)
                     VALUES ($name, $folderName, $loadOrder, $xml, $dll, $displayName, $desc, $author, $version, $website)";
                 cmd.Parameters.AddWithValue("$name", modName);

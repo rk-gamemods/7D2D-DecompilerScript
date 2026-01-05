@@ -48,13 +48,14 @@ public class Program
             case "build":
                 if (args.Length < 3)
                 {
-                    Console.WriteLine("Usage: XmlIndexer build <game_path> <output_db>");
+                    Console.WriteLine("Usage: XmlIndexer build <game_path> <output_db> [--force]");
+                    Console.WriteLine("  --force  Force full rebuild even if files unchanged");
                     return 1;
                 }
                 _gamePath = args[1];
                 _dbPath = args[2];
                 _verbose = args.Contains("-v") || args.Contains("--verbose");
-                return BuildDatabase();
+                return BuildDatabase(args.Contains("--force"));
 
             case "full-analyze":
                 if (args.Length < 4)
@@ -81,12 +82,13 @@ public class Program
             case "analyze-mods":
                 if (args.Length < 3)
                 {
-                    Console.WriteLine("Usage: XmlIndexer analyze-mods <db_path> <mods_folder>");
+                    Console.WriteLine("Usage: XmlIndexer analyze-mods <db_path> <mods_folder> [--force]");
                     return 1;
                 }
                 _dbPath = args[1];
                 var modsFolder = args[2];
-                return AnalyzeAllMods(modsFolder);
+                var forceModRebuild = args.Contains("--force");
+                return AnalyzeAllMods(modsFolder, forceModRebuild);
 
             case "stats":
                 if (args.Length < 2)
@@ -360,7 +362,7 @@ public class Program
         Console.WriteLine("  XmlIndexer refs eco.db item itemRepairKit");
     }
 
-    private static int BuildDatabase()
+    private static int BuildDatabase(bool forceRebuild = false)
     {
         var sw = Stopwatch.StartNew();
         var configPath = Path.Combine(_gamePath!, "Data", "Config");
@@ -373,14 +375,32 @@ public class Program
         Console.WriteLine($"Building XML index from: {configPath}");
         Console.WriteLine($"Output database: {_dbPath}");
 
-        // Delete existing database
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        // Check if database exists
+        bool dbExists = File.Exists(_dbPath);
+        
+        // Open or create database
+        using var db = new SqliteConnection($"Data Source={_dbPath}");
+        db.Open();
 
-        // PHASE 1: Read all XML files into memory in parallel
-        Console.WriteLine("\n[Phase 1] Loading XML files into memory...");
-        var readSw = Stopwatch.StartNew();
-        var xmlFiles = new ConcurrentDictionary<string, XDocument>();
+        // Ensure schema exists
+        if (!dbExists)
+        {
+            Console.WriteLine("Creating new database...");
+            Database.DatabaseBuilder.CreateSchema(db);
+        }
+        else
+        {
+            Database.DatabaseBuilder.EnsureSchema(db);
+        }
+
+        // Handle --force flag
+        if (forceRebuild && dbExists)
+        {
+            Console.WriteLine("Force rebuild requested - clearing all XML data...");
+            Database.DatabaseBuilder.ClearAllXmlData(db);
+        }
+
+        // Define files to process
         var filesToLoad = new[]
         {
             "items.xml", "blocks.xml", "entityclasses.xml", "entitygroups.xml",
@@ -388,12 +408,69 @@ public class Program
             "quests.xml", "gameevents.xml", "progression.xml", "loot.xml"
         };
 
-        Parallel.ForEach(filesToLoad, fileName =>
+        // Compute current file hashes
+        Console.WriteLine("\n[Phase 1] Checking file hashes...");
+        var hashSw = Stopwatch.StartNew();
+        var currentHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var existingFiles = new List<string>();
+        
+        foreach (var fileName in filesToLoad)
         {
             var filePath = Path.Combine(configPath, fileName);
             if (File.Exists(filePath))
             {
-                // Read entire file to memory, then parse
+                currentHashes[fileName] = Utils.ContentHasher.HashFile(filePath);
+                existingFiles.Add(fileName);
+            }
+        }
+
+        // Get stored hashes (skip if force or new db)
+        Dictionary<string, string> storedHashes;
+        List<string> changed, unchanged, newFiles, deleted;
+        
+        if (forceRebuild || !dbExists)
+        {
+            // Process everything
+            storedHashes = new Dictionary<string, string>();
+            changed = new List<string>();
+            unchanged = new List<string>();
+            newFiles = existingFiles;
+            deleted = new List<string>();
+        }
+        else
+        {
+            storedHashes = Database.DatabaseBuilder.GetStoredHashes(db, "game_xml");
+            (changed, unchanged, newFiles, deleted) = Database.DatabaseBuilder.CompareHashes(storedHashes, currentHashes);
+        }
+
+        Console.WriteLine($"  {unchanged.Count} unchanged, {changed.Count} modified, {newFiles.Count} new, {deleted.Count} deleted ({hashSw.ElapsedMilliseconds}ms)");
+
+        // Skip if nothing changed
+        var toProcess = changed.Concat(newFiles).ToList();
+        if (toProcess.Count == 0 && deleted.Count == 0)
+        {
+            Console.WriteLine("\n✓ All XML files unchanged - skipping rebuild ({0}ms)", sw.ElapsedMilliseconds);
+            return 0;
+        }
+
+        // Delete data for changed/deleted files
+        var toClean = changed.Concat(deleted).ToList();
+        if (toClean.Count > 0)
+        {
+            Console.WriteLine($"\n[Phase 2] Cleaning data for {toClean.Count} changed/deleted files...");
+            Database.DatabaseBuilder.DeleteXmlDataForFiles(db, toClean);
+        }
+
+        // PHASE 3: Read and parse files to process
+        Console.WriteLine($"\n[Phase 3] Processing {toProcess.Count} XML files...");
+        var readSw = Stopwatch.StartNew();
+        var xmlFiles = new ConcurrentDictionary<string, XDocument>();
+
+        Parallel.ForEach(toProcess, fileName =>
+        {
+            var filePath = Path.Combine(configPath, fileName);
+            if (File.Exists(filePath))
+            {
                 var content = File.ReadAllText(filePath);
                 var doc = XDocument.Parse(content, LoadOptions.SetLineInfo);
                 xmlFiles[fileName] = doc;
@@ -401,11 +478,8 @@ public class Program
         });
         Console.WriteLine($"  Loaded {xmlFiles.Count} files in {readSw.ElapsedMilliseconds}ms");
 
-        // PHASE 2: Process all XML in memory
-        Console.WriteLine("\n[Phase 2] Processing XML data...");
+        // Process XML data
         var processSw = Stopwatch.StartNew();
-        
-        // Use XmlParsers class (single code path)
         var parsers = new XmlParsers(_definitions, _properties, _references, _stats);
         
         if (xmlFiles.TryGetValue("items.xml", out var itemsDoc))
@@ -433,16 +507,24 @@ public class Program
         if (xmlFiles.TryGetValue("loot.xml", out var lootDoc))
             parsers.ParseLoot(lootDoc);
 
-        // Build extends cross-references in memory
         parsers.BuildExtendsReferences();
-
         Console.WriteLine($"  Processed {_definitions.Count} definitions, {_properties.Count} properties, {_references.Count} references in {processSw.ElapsedMilliseconds}ms");
 
-        // PHASE 3: Bulk write to database
-        Console.WriteLine("\n[Phase 3] Writing to database...");
+        // PHASE 4: Write to database
+        Console.WriteLine("\n[Phase 4] Writing to database...");
         var writeSw = Stopwatch.StartNew();
-        BulkWriteToDatabase();
+        BulkWriteToDatabase(db);
         Console.WriteLine($"  Database written in {writeSw.ElapsedMilliseconds}ms");
+
+        // Update file hashes
+        var hashEntries = toProcess.Select(f => (f, currentHashes[f], "game_xml"));
+        Database.DatabaseBuilder.BulkUpsertFileHashes(db, hashEntries);
+        
+        // Remove hashes for deleted files
+        if (deleted.Count > 0)
+        {
+            Database.DatabaseBuilder.DeleteFileHashes(db, deleted);
+        }
 
         // Print stats
         Console.WriteLine("\n=== Index Statistics ===");
@@ -458,13 +540,8 @@ public class Program
         return 0;
     }
 
-    private static void BulkWriteToDatabase()
+    private static void BulkWriteToDatabase(SqliteConnection db)
     {
-        using var db = new SqliteConnection($"Data Source={_dbPath}");
-        db.Open();
-
-        // Create complete schema (includes Harmony, GameCode analysis tables)
-        Database.DatabaseBuilder.CreateSchema(db);
 
         // Bulk insert using transactions
         using var transaction = db.BeginTransaction();
@@ -585,7 +662,15 @@ public class Program
 
     // ModResult and XmlRemoval defined in Models/DataModels.cs
 
-    private static int AnalyzeAllMods(string modsFolder)
+    private static int AnalyzeAllMods(string modsFolder, bool forceRebuild = false)
+    {
+        // Delegate to ModAnalyzer for consistent incremental processing
+        var analyzer = new ModAnalyzer(_dbPath!);
+        return analyzer.AnalyzeAllMods(modsFolder, forceRebuild);
+    }
+
+    // Legacy AnalyzeAllMods implementation preserved below for reference
+    private static int AnalyzeAllModsLegacy(string modsFolder)
     {
         if (!Directory.Exists(modsFolder))
         {

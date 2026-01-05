@@ -19,6 +19,173 @@ public static class DatabaseBuilder
     }
 
     /// <summary>
+    /// Ensures schema exists, creating it if the database is new.
+    /// For existing databases, creates any missing tables (IF NOT EXISTS pattern).
+    /// </summary>
+    public static void EnsureSchema(SqliteConnection db)
+    {
+        // Check if schema already exists by looking for a core table
+        using (var checkCmd = db.CreateCommand())
+        {
+            checkCmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='xml_definitions'";
+            var tableExists = Convert.ToInt32(checkCmd.ExecuteScalar()) > 0;
+            
+            if (tableExists)
+            {
+                // Schema exists, just ensure file_hashes table exists
+                checkCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS file_hashes (
+                        file_path TEXT PRIMARY KEY,
+                        hash TEXT NOT NULL,
+                        file_type TEXT NOT NULL,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )";
+                checkCmd.ExecuteNonQuery();
+                return; // Skip full schema recreation
+            }
+        }
+        
+        // New database - create full schema
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = Schema;
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Clears all XML-related data (for --force rebuilds).
+    /// </summary>
+    public static void ClearAllXmlData(SqliteConnection db)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            DELETE FROM xml_properties;
+            DELETE FROM xml_references;
+            DELETE FROM xml_definitions;
+            DELETE FROM xml_stats;
+            DELETE FROM file_hashes WHERE file_type = 'game_xml';
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Delete XML definitions and related data for specific files.
+    /// </summary>
+    public static void DeleteXmlDataForFiles(SqliteConnection db, IEnumerable<string> filePaths)
+    {
+        var pathList = filePaths.ToList();
+        if (pathList.Count == 0) return;
+
+        using var transaction = db.BeginTransaction();
+        try
+        {
+            // Delete properties first (FK constraint)
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    DELETE FROM xml_properties 
+                    WHERE definition_id IN (
+                        SELECT id FROM xml_definitions WHERE file_path = $path
+                    )";
+                var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+                
+                foreach (var path in pathList)
+                {
+                    pPath.Value = path;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            
+            // Delete references
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = "DELETE FROM xml_references WHERE source_file = $path";
+                var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+                
+                foreach (var path in pathList)
+                {
+                    pPath.Value = path;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            
+            // Delete definitions
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = "DELETE FROM xml_definitions WHERE file_path = $path";
+                var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+                
+                foreach (var path in pathList)
+                {
+                    pPath.Value = path;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete all data for a specific mod by folder path.
+    /// </summary>
+    public static void DeleteModDataByPath(SqliteConnection db, string modPath)
+    {
+        // Get mod_id first
+        using var cmdGetId = db.CreateCommand();
+        cmdGetId.CommandText = "SELECT id FROM mods WHERE folder_name = $path OR name = $name";
+        cmdGetId.Parameters.AddWithValue("$path", modPath);
+        cmdGetId.Parameters.AddWithValue("$name", Path.GetFileName(modPath));
+        var modId = cmdGetId.ExecuteScalar() as long?;
+        
+        if (modId == null) return;
+        
+        DeleteModDataById(db, modId.Value);
+        
+        // Delete mod record itself
+        using var cmdDeleteMod = db.CreateCommand();
+        cmdDeleteMod.CommandText = "DELETE FROM mods WHERE id = $id";
+        cmdDeleteMod.Parameters.AddWithValue("$id", modId.Value);
+        cmdDeleteMod.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Delete all related data for a mod by ID (keeps mod record).
+    /// </summary>
+    public static void DeleteModDataById(SqliteConnection db, long modId)
+    {
+        var tables = new[] { "mod_xml_operations", "mod_csharp_deps", "harmony_patches" };
+        
+        foreach (var table in tables)
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = $"DELETE FROM {table} WHERE mod_id = $id";
+            cmd.Parameters.AddWithValue("$id", modId);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
+    /// Delete file hash records for specified paths.
+    /// </summary>
+    public static void DeleteFileHashes(SqliteConnection db, IEnumerable<string> paths)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "DELETE FROM file_hashes WHERE file_path = $path";
+        var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+        
+        foreach (var path in paths)
+        {
+            pPath.Value = path;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
     /// Bulk write all in-memory data to the database.
     /// </summary>
     public static void BulkWriteAllData(
