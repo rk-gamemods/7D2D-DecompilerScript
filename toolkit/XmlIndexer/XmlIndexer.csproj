@@ -16,4 +16,9 @@
     <EmbeddedResource Include="Assets\cytoscape.min.js" />
   </ItemGroup>
 
+  <!-- Allow test project to access internal members -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="XmlIndexer.Tests" />
+  </ItemGroup>
+
 </Project>
