@@ -32,13 +32,13 @@ public static class DatabaseBuilder
             
             if (tableExists)
             {
-                // Schema exists, just ensure file_hashes table exists
+                // Schema exists, just ensure file_hashes table exists with correct columns
                 checkCmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS file_hashes (
                         file_path TEXT PRIMARY KEY,
-                        hash TEXT NOT NULL,
-                        file_type TEXT NOT NULL,
-                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        content_hash TEXT NOT NULL,
+                        last_processed TEXT NOT NULL,
+                        file_type TEXT NOT NULL
                     )";
                 checkCmd.ExecuteNonQuery();
                 return; // Skip full schema recreation
@@ -551,7 +551,7 @@ public static class DatabaseBuilder
         try
         {
             using var cmd = db.CreateCommand();
-            cmd.CommandText = "SELECT hash FROM file_hashes WHERE file_path = $key AND file_type = 'cache_key'";
+            cmd.CommandText = "SELECT content_hash FROM file_hashes WHERE file_path = $key AND file_type = 'cache_key'";
             cmd.Parameters.AddWithValue("$key", key);
             return cmd.ExecuteScalar() as string;
         }
@@ -568,8 +568,8 @@ public static class DatabaseBuilder
     {
         using var cmd = db.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR REPLACE INTO file_hashes (file_path, hash, file_type, updated_at)
-            VALUES ($key, $hash, 'cache_key', datetime('now'))";
+            INSERT OR REPLACE INTO file_hashes (file_path, content_hash, last_processed, file_type)
+            VALUES ($key, $hash, datetime('now'), 'cache_key')";
         cmd.Parameters.AddWithValue("$key", key);
         cmd.Parameters.AddWithValue("$hash", hash);
         cmd.ExecuteNonQuery();
