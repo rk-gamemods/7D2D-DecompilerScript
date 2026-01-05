@@ -136,6 +136,17 @@ function escapeHtml(text) {{
   return div.innerHTML;
 }}
 
+// Escape text for use in HTML attributes (handles quotes and special chars)
+function escapeAttr(text) {{
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/""/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}}
+
 function filterGameCode() {{
   const query = document.getElementById('gamecode-search').value;
   const typeFilter = document.getElementById('type-filter').value;
@@ -300,8 +311,9 @@ function renderFinding(f, idx) {{
   }}
   
   // Class.Method name (clickable - filters to show all findings in this class)
+  // Uses data attributes to avoid JavaScript escaping complexity
   html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;"">';
-  html += '<a href=""#"" onclick=""filterByClass(\\'' + escapeHtml(f.className).replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:inherit;text-decoration:none;border-bottom:1px dashed currentColor;"" title=""Show all findings in this class"">' + escapeHtml(f.className) + '</a>';
+  html += '<a href=""#"" class=""js-click"" data-action=""filterByClass"" data-arg0=""' + escapeAttr(f.className) + '"" style=""color:inherit;text-decoration:none;border-bottom:1px dashed currentColor;"" title=""Show all findings in this class"">' + escapeHtml(f.className) + '</a>';
   html += '.<span>' + escapeHtml(f.methodName || '?') + '</span>';
   html += '</span>';
   html += '</div>';
@@ -379,10 +391,10 @@ function renderFinding(f, idx) {{
             badge = '<span style=""background:' + bc.bg + ';color:' + textColor + ';padding:1px 4px;border-radius:2px;font-size:9px;font-weight:bold;margin-right:4px;"">' + bc.label + '</span>';
           }}
           
-          // Make non-target nodes clickable for navigation
+          // Make non-target nodes clickable for navigation using data attributes
           let methodLink = escapeHtml(methodClass + '.' + methodName);
           if (!isTarget && methodClass) {{
-            methodLink = '<a href=""#"" onclick=""filterByClassMethod(\\'' + methodClass.replace(/'/g, ""\\\\'"") + '\\', \\'' + methodName.replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:inherit;text-decoration:underline;text-decoration-style:dotted;"">' + escapeHtml(methodClass + '.' + methodName) + '</a>';
+            methodLink = '<a href=""#"" class=""js-click"" data-action=""filterByClassMethod"" data-arg0=""' + escapeAttr(methodClass) + '"" data-arg1=""' + escapeAttr(methodName) + '"" style=""color:inherit;text-decoration:underline;text-decoration-style:dotted;"">' + escapeHtml(methodClass + '.' + methodName) + '</a>';
           }}
           
           html += '<div style=""' + (isTarget ? 'font-weight:bold;color:var(--accent);' : '') + '"">';
@@ -423,8 +435,8 @@ function renderFinding(f, idx) {{
         const snippet = c.code_snippet || c.codeSnippet || '';
         
         html += '<div style=""border-left:2px solid #95a5a6;padding-left:0.5rem;margin:0.5rem 0;"">';
-        // Make caller clickable for navigation
-        html += '<a href=""#"" onclick=""filterByClassMethod(\\'' + callerClass.replace(/'/g, ""\\\\'"") + '\\', \\'' + callerMethod.replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:var(--accent);text-decoration:none;"" title=""Find findings in ' + escapeHtml(callerClass) + '"">';
+        // Make caller clickable for navigation using data attributes
+        html += '<a href=""#"" class=""js-click"" data-action=""filterByClassMethod"" data-arg0=""' + escapeAttr(callerClass) + '"" data-arg1=""' + escapeAttr(callerMethod) + '"" style=""color:var(--accent);text-decoration:none;"" title=""Find findings in ' + escapeHtml(callerClass) + '"">';
         html += '<code style=""font-size:11px;"">' + escapeHtml(callerClass + '.' + callerMethod) + '()</code></a>';
         if (filePath || lineNum) {{
           html += '<span style=""color:#95a5a6;font-size:10px;margin-left:0.5rem;"">' + escapeHtml(filePath) + (lineNum ? ':' + lineNum : '') + '</span>';
@@ -595,6 +607,31 @@ document.addEventListener('DOMContentLoaded', function() {{
     }}
   }}
   filterGameCode();
+}});
+
+// Event delegation for js-click elements (handles dynamically created links)
+// This eliminates the need for complex JavaScript string escaping in onclick handlers
+document.addEventListener('click', function(e) {{
+  const el = e.target.closest('.js-click');
+  if (!el) return;
+  
+  e.preventDefault();
+  const action = el.dataset.action;
+  
+  // Collect arguments from data-arg0, data-arg1, etc.
+  const args = [];
+  let i = 0;
+  while (el.dataset['arg' + i] !== undefined) {{
+    args.push(el.dataset['arg' + i]);
+    i++;
+  }}
+  
+  // Call the function if it exists
+  if (typeof window[action] === 'function') {{
+    window[action].apply(null, args);
+  }} else {{
+    console.error('Unknown action:', action, 'with args:', args);
+  }}
 }});
 ";
     }
