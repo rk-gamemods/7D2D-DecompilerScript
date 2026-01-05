@@ -104,6 +104,19 @@ public class EntityEnricher
             result.SourceContext = ExtractSourceContext(filePath, lineNumber.Value, methodName);
         }
 
+        // 8. Call graph enrichment (from consolidated cg_* tables)
+        if (!string.IsNullOrEmpty(className) && !string.IsNullOrEmpty(methodName))
+        {
+            // Get methods that this method calls
+            result.Callees = GetMethodCallees(className, methodName);
+        }
+        
+        // 9. Type hierarchy (base classes and interfaces)
+        if (!string.IsNullOrEmpty(className))
+        {
+            result.TypeHierarchy = GetTypeHierarchy(className);
+        }
+
         return result;
     }
 
@@ -870,6 +883,125 @@ public class EntityEnricher
 
     #endregion
 
+    #region Call Graph Enrichment (from cg_* tables)
+
+    /// <summary>
+    /// Gets methods that this method calls (callees) from the consolidated call graph.
+    /// </summary>
+    private string? GetMethodCallees(string className, string methodName)
+    {
+        try
+        {
+            var callees = new List<object>();
+            
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = @"
+                SELECT 
+                    callee_t.name as callee_class,
+                    callee_m.name as callee_method,
+                    callee_m.signature,
+                    c.call_type,
+                    c.line_number
+                FROM cg_calls c
+                JOIN cg_methods caller_m ON c.caller_id = caller_m.id
+                JOIN cg_types caller_t ON caller_m.type_id = caller_t.id
+                JOIN cg_methods callee_m ON c.callee_id = callee_m.id
+                JOIN cg_types callee_t ON callee_m.type_id = callee_t.id
+                WHERE caller_t.name = $className AND caller_m.name = $methodName
+                LIMIT 20";
+            
+            cmd.Parameters.AddWithValue("$className", className);
+            cmd.Parameters.AddWithValue("$methodName", methodName);
+            
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                callees.Add(new
+                {
+                    callee_class = reader.GetString(0),
+                    callee_method = reader.GetString(1),
+                    signature = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    call_type = reader.IsDBNull(3) ? "direct" : reader.GetString(3),
+                    line_number = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
+                });
+            }
+            
+            if (callees.Count == 0) return null;
+            
+            return JsonSerializer.Serialize(new
+            {
+                callee_count = callees.Count,
+                callees = callees
+            });
+        }
+        catch
+        {
+            return null; // cg_* tables may not exist
+        }
+    }
+
+    /// <summary>
+    /// Gets the type hierarchy (base classes and interfaces) for a class.
+    /// </summary>
+    private string? GetTypeHierarchy(string className)
+    {
+        try
+        {
+            // Get base class chain
+            var baseClasses = new List<string>();
+            var currentType = className;
+            var maxDepth = 10; // Prevent infinite loops
+            
+            while (maxDepth-- > 0)
+            {
+                using var baseCmd = _db.CreateCommand();
+                baseCmd.CommandText = @"
+                    SELECT base_type FROM cg_types 
+                    WHERE name = $name AND base_type IS NOT NULL AND base_type != ''";
+                baseCmd.Parameters.AddWithValue("$name", currentType);
+                
+                var baseType = baseCmd.ExecuteScalar() as string;
+                if (string.IsNullOrEmpty(baseType) || baseType == "object" || baseType == "Object")
+                    break;
+                    
+                baseClasses.Add(baseType);
+                currentType = baseType;
+            }
+            
+            // Get implemented interfaces
+            var interfaces = new List<string>();
+            using var ifaceCmd = _db.CreateCommand();
+            ifaceCmd.CommandText = @"
+                SELECT i.interface_name 
+                FROM cg_implements i
+                JOIN cg_types t ON i.type_id = t.id
+                WHERE t.name = $name";
+            ifaceCmd.Parameters.AddWithValue("$name", className);
+            
+            using var reader = ifaceCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                interfaces.Add(reader.GetString(0));
+            }
+            
+            if (baseClasses.Count == 0 && interfaces.Count == 0)
+                return null;
+            
+            return JsonSerializer.Serialize(new
+            {
+                base_classes = baseClasses,
+                interfaces = interfaces,
+                depth = baseClasses.Count
+            });
+        }
+        catch
+        {
+            return null; // cg_* tables may not exist
+        }
+    }
+
+    #endregion
+
     #region Helpers
 
     private static string? ExtractEntityNameFromCode(string? codeSnippet)
@@ -924,6 +1056,9 @@ public record EnrichmentResult
     public string? Reachability { get; set; }
     public string? SourceContext { get; set; }
     public string? UsageLevel { get; set; }
+    // New fields from consolidated call graph
+    public string? Callees { get; set; }       // Methods this method calls (from cg_calls)
+    public string? TypeHierarchy { get; set; } // Base classes and interfaces (from cg_types/cg_implements)
 }
 
 public record HardcodedEntityMatch(

@@ -517,6 +517,79 @@ function renderFinding(f, idx) {{
     html += '</div></details>';
   }}
 
+  // === CALLEES SECTION (methods this method calls - from cg_calls) ===
+  if (f.callees && f.callees.callees && f.callees.callees.length > 0) {{
+    const calleeList = f.callees.callees;
+    html += '<details class=""callees-section"" style=""margin:0.75rem 0;"">';
+    html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(46,204,113,0.05);border-radius:4px;border:1px solid rgba(46,204,113,0.1);"">';
+    html += '<strong>Methods Called</strong> ';
+    html += '<span style=""color:#95a5a6;font-size:12px;"">(' + calleeList.length + ' calls)</span>';
+    html += '</summary>';
+    html += '<div style=""padding:0.5rem;"">';
+    
+    calleeList.slice(0, 10).forEach(function(c) {{
+      html += '<div style=""font-size:12px;padding:0.25rem 0;display:flex;align-items:center;gap:0.5rem;"">';
+      html += '<span style=""color:#27ae60;font-size:10px;"">→</span>';
+      html += '<a href=""#"" class=""js-click"" data-action=""filterByClassMethod"" data-arg0=""' + escapeAttr(c.callee_class) + '"" data-arg1=""' + escapeAttr(c.callee_method) + '"" style=""color:var(--accent);text-decoration:none;"">';
+      html += escapeHtml(c.callee_class + '.' + c.callee_method) + '()</a>';
+      if (c.line_number) {{
+        html += '<span style=""color:#95a5a6;font-size:10px;"">line ' + c.line_number + '</span>';
+      }}
+      html += '</div>';
+    }});
+    
+    if (calleeList.length > 10) {{
+      html += '<div style=""color:#95a5a6;font-size:10px;padding-top:0.25rem;"">...and ' + (calleeList.length - 10) + ' more calls</div>';
+    }}
+    
+    html += '</div></details>';
+  }}
+
+  // === TYPE HIERARCHY SECTION (base classes and interfaces - from cg_types/cg_implements) ===
+  if (f.typeHierarchy) {{
+    const th = f.typeHierarchy;
+    const hasBaseClasses = th.base_classes && th.base_classes.length > 0;
+    const hasInterfaces = th.interfaces && th.interfaces.length > 0;
+    
+    if (hasBaseClasses || hasInterfaces) {{
+      html += '<details class=""type-hierarchy-section"" style=""margin:0.75rem 0;"">';
+      html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(155,89,182,0.05);border-radius:4px;border:1px solid rgba(155,89,182,0.1);"">';
+      html += '<strong>Type Hierarchy</strong> ';
+      const totalCount = (th.base_classes?.length || 0) + (th.interfaces?.length || 0);
+      html += '<span style=""color:#95a5a6;font-size:12px;"">(' + totalCount + ' types)</span>';
+      html += '</summary>';
+      html += '<div style=""padding:0.5rem;"">';
+      
+      // Inheritance chain
+      if (hasBaseClasses) {{
+        html += '<div style=""margin-bottom:0.5rem;"">';
+        html += '<span style=""font-weight:bold;font-size:11px;color:#9b59b6;"">Inherits from:</span>';
+        html += '<div style=""display:flex;flex-wrap:wrap;gap:0.25rem;margin-top:0.25rem;"">';
+        th.base_classes.forEach(function(bc, i) {{
+          html += '<span style=""background:rgba(155,89,182,0.1);color:#9b59b6;padding:2px 6px;border-radius:3px;font-size:11px;"">';
+          html += (i > 0 ? '→ ' : '') + escapeHtml(bc);
+          html += '</span>';
+        }});
+        html += '</div></div>';
+      }}
+      
+      // Interfaces
+      if (hasInterfaces) {{
+        html += '<div>';
+        html += '<span style=""font-weight:bold;font-size:11px;color:#3498db;"">Implements:</span>';
+        html += '<div style=""display:flex;flex-wrap:wrap;gap:0.25rem;margin-top:0.25rem;"">';
+        th.interfaces.forEach(function(iface) {{
+          html += '<span style=""background:rgba(52,152,219,0.1);color:#3498db;padding:2px 6px;border-radius:3px;font-size:11px;"">';
+          html += escapeHtml(iface);
+          html += '</span>';
+        }});
+        html += '</div></div>';
+      }}
+      
+      html += '</div></details>';
+    }}
+  }}
+
   // === FULL METHOD SOURCE SECTION (uses sourceContext when available) ===
   const methodBody = (f.sourceContext && f.sourceContext.method_body) ? f.sourceContext.method_body : f.codeSnippet;
   const lineCount = (f.sourceContext && f.sourceContext.method_end_line && f.sourceContext.method_start_line)
@@ -685,6 +758,8 @@ document.addEventListener('click', function(e) {{
             string? reachability = null;
             string? sourceContext = null;
             string? usageLevel = null;
+            string? callees = null;
+            string? typeHierarchy = null;
 
             if (enricher != null)
             {
@@ -706,6 +781,8 @@ document.addEventListener('click', function(e) {{
                 reachability = enrichment.Reachability;
                 sourceContext = enrichment.SourceContext;
                 usageLevel = enrichment.UsageLevel;
+                callees = enrichment.Callees;
+                typeHierarchy = enrichment.TypeHierarchy;
             }
 
             findings.Add(new FindingData(
@@ -728,7 +805,9 @@ document.addEventListener('click', function(e) {{
                 SemanticContext: semanticContext,
                 Reachability: reachability,
                 SourceContext: sourceContext,
-                UsageLevel: usageLevel
+                UsageLevel: usageLevel,
+                Callees: callees,
+                TypeHierarchy: typeHierarchy
             ));
         }
 
@@ -762,7 +841,9 @@ document.addEventListener('click', function(e) {{
             obj.Append($"\"semanticContext\":{(f.SemanticContext != null ? f.SemanticContext : "null")},");
             obj.Append($"\"reachability\":{(f.Reachability != null ? f.Reachability : "null")},");
             obj.Append($"\"sourceContext\":{(f.SourceContext != null ? f.SourceContext : "null")},");
-            obj.Append($"\"usageLevel\":{JsonString(f.UsageLevel)}");
+            obj.Append($"\"usageLevel\":{JsonString(f.UsageLevel)},");
+            obj.Append($"\"callees\":{(f.Callees != null ? f.Callees : "null")},");
+            obj.Append($"\"typeHierarchy\":{(f.TypeHierarchy != null ? f.TypeHierarchy : "null")}");
             obj.Append("}");
             jsonObjects.Add(obj.ToString());
         }
@@ -797,6 +878,9 @@ document.addEventListener('click', function(e) {{
         string? SemanticContext,
         string? Reachability,
         string? SourceContext,
-        string? UsageLevel
+        string? UsageLevel,
+        // New fields from consolidated call graph
+        string? Callees,       // Methods this method calls (from cg_calls)
+        string? TypeHierarchy  // Base classes and interfaces (from cg_types/cg_implements)
     );
 }
