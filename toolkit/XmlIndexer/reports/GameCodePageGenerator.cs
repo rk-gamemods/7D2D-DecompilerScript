@@ -82,6 +82,12 @@ public static class GameCodePageGenerator
         body.AppendLine(@"    <option value=""unused"">Unused</option>");
         body.AppendLine(@"    <option value=""unknown"">Unknown</option>");
         body.AppendLine(@"  </select>");
+        body.AppendLine(@"  <select class=""filter-select"" id=""relevance-filter"" onchange=""filterGameCode()"">");
+        body.AppendLine(@"    <option value="""">All Relevance</option>");
+        body.AppendLine(@"    <option value=""high"">High (60+)</option>");
+        body.AppendLine(@"    <option value=""medium"">Medium (30-59)</option>");
+        body.AppendLine(@"    <option value=""low"">Low (&lt;30)</option>");
+        body.AppendLine(@"  </select>");
         body.AppendLine(@"</div>");
 
         // Type Browser section
@@ -219,6 +225,7 @@ function filterGameCode() {{
   const query = document.getElementById('gamecode-search').value;
   const typeFilter = document.getElementById('type-filter').value;
   const usageFilter = document.getElementById('usage-filter').value;
+  const relevanceFilter = document.getElementById('relevance-filter').value;
   const useFuzzy = document.getElementById('fuzzy-toggle').checked;
 
   let filtered = FINDINGS_DATA.slice();
@@ -236,6 +243,17 @@ function filterGameCode() {{
   // Usage level filter
   if (usageFilter) {{
     filtered = filtered.filter(f => f.usageLevel === usageFilter);
+  }}
+
+  // Relevance filter
+  if (relevanceFilter) {{
+    if (relevanceFilter === 'high') {{
+      filtered = filtered.filter(f => (f.relevanceScore || 0) >= 60);
+    }} else if (relevanceFilter === 'medium') {{
+      filtered = filtered.filter(f => (f.relevanceScore || 0) >= 30 && (f.relevanceScore || 0) < 60);
+    }} else if (relevanceFilter === 'low') {{
+      filtered = filtered.filter(f => (f.relevanceScore || 0) < 30);
+    }}
   }}
 
   // Search filter
@@ -436,6 +454,12 @@ function renderFinding(f, idx, typeContext) {{
 
   // === HEADER ROW ===
   html += '<div class=""finding-header"" style=""display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;"">';
+  
+  // Relevance score badge (colored by score level)
+  const relevanceScore = f.relevanceScore || 0;
+  const relevanceColor = relevanceScore >= 60 ? '#27ae60' : relevanceScore >= 30 ? '#f39c12' : '#7f8c8d';
+  const relevanceBg = relevanceScore >= 60 ? 'rgba(46, 204, 113, 0.15)' : relevanceScore >= 30 ? 'rgba(243, 156, 18, 0.15)' : 'rgba(127, 140, 141, 0.1)';
+  html += '<span class=""relevance-badge"" style=""background:' + relevanceBg + ';color:' + relevanceColor + ';border:1px solid ' + relevanceColor + ';padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;cursor:help;"" title=""Relevance Score (Conn:' + (f.connectivityScore || 0) + ' Entity:' + (f.entityScoreValue || 0) + ' Mod:' + (f.modScore || 0) + ' KW:' + (f.keywordScore || 0) + ' Pen:' + (f.artifactPenalty || 0) + ')"">[' + relevanceScore + ']</span>';
   
   // Severity badge (prominent)
   html += '<span class=""tag"" style=""background:' + sc.bg + ';color:' + sc.text + ';border:1px solid ' + sc.border + ';padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;"">' + (f.severity || 'INFO') + '</span>';
@@ -789,6 +813,7 @@ function filterByClass(className) {{
   document.getElementById('gamecode-search').value = className;
   document.getElementById('type-filter').value = '';
   document.getElementById('usage-filter').value = '';
+  document.getElementById('relevance-filter').value = '';
   currentSeverity = '';
   // Update URL hash for bookmarking
   history.pushState(null, '', '#class=' + encodeURIComponent(className));
@@ -802,6 +827,7 @@ function filterByClassMethod(className, methodName) {{
   document.getElementById('gamecode-search').value = className + '.' + methodName;
   document.getElementById('type-filter').value = '';
   document.getElementById('usage-filter').value = '';
+  document.getElementById('relevance-filter').value = '';
   currentSeverity = '';
   // Update URL hash for bookmarking  
   history.pushState(null, '', '#class=' + encodeURIComponent(className) + '&method=' + encodeURIComponent(methodName));
@@ -1419,16 +1445,24 @@ function filterByMethod(methodName, className) {{
         }
 
         using var cmd = db.CreateCommand();
-        // Use only the columns that exist in the current schema
+        // LEFT JOIN with code_relevance to get scores, fallback to 0 if not computed yet
         cmd.CommandText = @"
-            SELECT analysis_type, class_name, method_name, severity, confidence,
-                   description, reasoning, code_snippet, file_path, line_number, potential_fix,
-                   related_entities
-            FROM game_code_analysis
+            SELECT g.analysis_type, g.class_name, g.method_name, g.severity, g.confidence,
+                   g.description, g.reasoning, g.code_snippet, g.file_path, g.line_number, g.potential_fix,
+                   g.related_entities, g.id,
+                   COALESCE(r.total_score, 0) as relevance_score,
+                   COALESCE(r.connectivity_score, 0) as connectivity_score,
+                   COALESCE(r.entity_score, 0) as entity_score,
+                   COALESCE(r.mod_score, 0) as mod_score,
+                   COALESCE(r.keyword_score, 0) as keyword_score,
+                   COALESCE(r.artifact_penalty, 0) as artifact_penalty
+            FROM game_code_analysis g
+            LEFT JOIN code_relevance r ON g.id = r.analysis_id
             ORDER BY
-                CASE severity WHEN 'BUG' THEN 1 WHEN 'WARNING' THEN 2 WHEN 'OPPORTUNITY' THEN 3 ELSE 4 END,
-                CASE confidence WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-                class_name, line_number";
+                COALESCE(r.total_score, 0) DESC,
+                CASE g.severity WHEN 'BUG' THEN 1 WHEN 'WARNING' THEN 2 WHEN 'OPPORTUNITY' THEN 3 ELSE 4 END,
+                CASE g.confidence WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                g.class_name, g.line_number";
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -1445,6 +1479,13 @@ function filterByMethod(methodName, className) {{
             var lineNumber = reader.IsDBNull(9) ? (int?)null : reader.GetInt32(9);
             var potentialFix = reader.IsDBNull(10) ? null : reader.GetString(10);
             var relatedEntities = reader.IsDBNull(11) ? null : reader.GetString(11);
+            var analysisId = reader.GetInt64(12);
+            var relevanceScore = reader.GetInt32(13);
+            var connectivityScore = reader.GetInt32(14);
+            var entityScore = reader.GetInt32(15);
+            var modScore = reader.GetInt32(16);
+            var keywordScore = reader.GetInt32(17);
+            var artifactPenalty = reader.GetInt32(18);
 
             // Enrich the finding with additional context
             string? entityName = null;
@@ -1505,7 +1546,14 @@ function filterByMethod(methodName, className) {{
                 SourceContext: sourceContext,
                 UsageLevel: usageLevel,
                 Callees: callees,
-                TypeHierarchy: typeHierarchy
+                TypeHierarchy: typeHierarchy,
+                // Relevance scores
+                RelevanceScore: relevanceScore,
+                ConnectivityScore: connectivityScore,
+                EntityScoreValue: entityScore,
+                ModScore: modScore,
+                KeywordScore: keywordScore,
+                ArtifactPenalty: artifactPenalty
             ));
         }
 
@@ -1541,7 +1589,14 @@ function filterByMethod(methodName, className) {{
             obj.Append($"\"sourceContext\":{(f.SourceContext != null ? f.SourceContext : "null")},");
             obj.Append($"\"usageLevel\":{JsonString(f.UsageLevel)},");
             obj.Append($"\"callees\":{(f.Callees != null ? f.Callees : "null")},");
-            obj.Append($"\"typeHierarchy\":{(f.TypeHierarchy != null ? f.TypeHierarchy : "null")}");
+            obj.Append($"\"typeHierarchy\":{(f.TypeHierarchy != null ? f.TypeHierarchy : "null")},");
+            // Relevance scores
+            obj.Append($"\"relevanceScore\":{f.RelevanceScore},");
+            obj.Append($"\"connectivityScore\":{f.ConnectivityScore},");
+            obj.Append($"\"entityScoreValue\":{f.EntityScoreValue},");
+            obj.Append($"\"modScore\":{f.ModScore},");
+            obj.Append($"\"keywordScore\":{f.KeywordScore},");
+            obj.Append($"\"artifactPenalty\":{f.ArtifactPenalty}");
             obj.Append("}");
             jsonObjects.Add(obj.ToString());
         }
@@ -1579,7 +1634,14 @@ function filterByMethod(methodName, className) {{
         string? UsageLevel,
         // New fields from consolidated call graph
         string? Callees,       // Methods this method calls (from cg_calls)
-        string? TypeHierarchy  // Base classes and interfaces (from cg_types/cg_implements)
+        string? TypeHierarchy, // Base classes and interfaces (from cg_types/cg_implements)
+        // Relevance scores
+        int RelevanceScore = 0,
+        int ConnectivityScore = 0,
+        int EntityScoreValue = 0,
+        int ModScore = 0,
+        int KeywordScore = 0,
+        int ArtifactPenalty = 0
     );
 
     /// <summary>
