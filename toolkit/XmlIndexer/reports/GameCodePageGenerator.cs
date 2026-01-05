@@ -96,6 +96,18 @@ public static class GameCodePageGenerator
         body.AppendLine(@"  </div>");
         body.AppendLine(@"</details>");
 
+        // Method Search section
+        var methodSearchData = GetMethodSearchData(db);
+        var methodCount = System.Text.RegularExpressions.Regex.Matches(methodSearchData, @"""n"":").Count;
+        
+        body.AppendLine(@"<details class=""method-search"" style=""margin: 1rem 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);"">");
+        body.AppendLine($@"  <summary style=""padding: 0.75rem 1rem; cursor: pointer; font-weight: 500;"">🔍 Search Methods ({methodCount:N0} methods indexed)</summary>");
+        body.AppendLine(@"  <div class=""method-search-content"" style=""padding: 1rem;"">");
+        body.AppendLine(@"    <input type=""text"" id=""method-search-input"" placeholder=""Search method names, signatures..."" style=""width: 100%; padding: 0.5rem; margin-bottom: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text);"">");
+        body.AppendLine(@"    <div id=""method-search-results"" style=""max-height: 350px; overflow-y: auto;""></div>");
+        body.AppendLine(@"  </div>");
+        body.AppendLine(@"</details>");
+
         // Call Graph Explorer toggle
         body.AppendLine(@"<div class=""callgraph-toggle"" style=""margin: 1rem 0;"">");
         body.AppendLine(@"  <button id=""open-callgraph-btn"" onclick=""openCallGraphExplorer()"" style=""padding:0.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;font-size:13px;"">");
@@ -135,7 +147,7 @@ public static class GameCodePageGenerator
         var jsonData = SerializeFindingsToJson(findings);
 
         // Client-side JavaScript
-        var script = GenerateJavaScript(jsonData, typeBrowserData);
+        var script = GenerateJavaScript(jsonData, typeBrowserData, methodSearchData);
 
         // Add Cytoscape.js CDN
         var extraHead = @"<script src=""https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js""></script>";
@@ -143,12 +155,13 @@ public static class GameCodePageGenerator
         return SharedAssets.WrapPage("Game Code Analysis", "gamecode.html", body.ToString(), script, extraHead);
     }
 
-    private static string GenerateJavaScript(string jsonData, string typeBrowserJson)
+    private static string GenerateJavaScript(string jsonData, string typeBrowserJson, string methodSearchJson)
     {
         return $@"
 // Inline JSON - simple, works offline
 const FINDINGS_DATA = {jsonData};
 const TYPE_BROWSER_DATA = {typeBrowserJson};
+const METHOD_SEARCH_DATA = {methodSearchJson};
 
 let currentSeverity = '';
 
@@ -1192,7 +1205,137 @@ function filterByType(fullTypeName) {{
 // Initialize type browser when page loads
 document.addEventListener('DOMContentLoaded', function() {{
   initTypeBrowser();
+  initMethodSearch();
 }});
+
+// ==================== METHOD SEARCH ====================
+
+let methodSearchIndex = null;
+let methodSearchDebounce = null;
+
+function initMethodSearch() {{
+  const input = document.getElementById('method-search-input');
+  if (!input) return;
+  
+  // Build search index on first interaction
+  input.addEventListener('focus', function() {{
+    if (!methodSearchIndex && typeof METHOD_SEARCH_DATA !== 'undefined') {{
+      methodSearchIndex = METHOD_SEARCH_DATA;
+      console.log(`Method search index: ${{methodSearchIndex.length}} methods`);
+    }}
+  }}, {{ once: true }});
+  
+  // Search on input with debounce
+  input.addEventListener('input', function() {{
+    clearTimeout(methodSearchDebounce);
+    methodSearchDebounce = setTimeout(() => searchMethods(this.value), 200);
+  }});
+}}
+
+function searchMethods(query) {{
+  const results = document.getElementById('method-search-results');
+  if (!results || !methodSearchIndex) return;
+  
+  query = query.toLowerCase().trim();
+  if (query.length < 2) {{
+    results.innerHTML = '<div class=""search-hint"">Type at least 2 characters to search...</div>';
+    return;
+  }}
+  
+  // Search through methods
+  const matches = [];
+  const limit = 100;
+  
+  for (const m of methodSearchIndex) {{
+    // Search in method name and class name
+    const methodMatch = m.n.toLowerCase().includes(query);
+    const classMatch = m.c.toLowerCase().includes(query);
+    const sigMatch = m.s.toLowerCase().includes(query);
+    
+    if (methodMatch || classMatch || sigMatch) {{
+      matches.push({{
+        method: m,
+        // Prioritize: exact method name > method contains > class contains
+        score: (m.n.toLowerCase() === query ? 100 : 0) +
+               (methodMatch ? 10 : 0) +
+               (classMatch ? 5 : 0) +
+               (sigMatch ? 1 : 0)
+      }});
+    }}
+    
+    if (matches.length >= limit) break;
+  }}
+  
+  // Sort by score
+  matches.sort((a, b) => b.score - a.score);
+  
+  renderMethodResults(matches, query);
+}}
+
+function renderMethodResults(matches, query) {{
+  const results = document.getElementById('method-search-results');
+  if (!results) return;
+  
+  if (matches.length === 0) {{
+    results.innerHTML = '<div style=""color:var(--text-muted);padding:0.5rem;"">No methods found matching ""' + escapeHtml(query) + '""</div>';
+    return;
+  }}
+  
+  let html = '<div style=""color:var(--text-muted);font-size:12px;margin-bottom:0.5rem;"">' + matches.length + ' method' + (matches.length !== 1 ? 's' : '') + ' found</div>';
+  html += '<div>';
+  
+  for (const match of matches) {{
+    const m = match.method;
+    const className = m.c.split('.').pop() || m.c; // Short class name
+    const namespace = m.c.includes('.') ? m.c.substring(0, m.c.lastIndexOf('.')) : '';
+    
+    html += '<div style=""padding:0.5rem;border-bottom:1px solid var(--border);cursor:pointer;"" onmouseover=""this.style.background=\'var(--card)\'"" onmouseout=""this.style.background=\'\'"" onclick=""filterByMethod(\'' + escapeAttr(m.n) + '\', \'' + escapeAttr(className) + '\')"">';
+    html += '<div style=""font-weight:500;color:var(--accent);"">';
+    html += highlightMatch(m.n, query);
+    html += '</div>';
+    html += '<div style=""font-size:12px;color:var(--text-muted);"">';
+    if (namespace) html += '<span style=""color:var(--text-dim);"">' + escapeHtml(namespace) + '.</span>';
+    html += highlightMatch(className, query);
+    html += '</div>';
+    html += '<div style=""font-size:11px;color:var(--text-dim);font-family:monospace;"">' + highlightMatch(m.s, query) + '</div>';
+    if (m.f) {{
+      html += '<div style=""font-size:10px;color:var(--text-dim);"">' + escapeHtml(m.f);
+      if (m.l > 0) html += ':' + m.l;
+      html += '</div>';
+    }}
+    html += '</div>';
+  }}
+  
+  html += '</div>';
+  results.innerHTML = html;
+}}
+
+function highlightMatch(text, query) {{
+  if (!query) return escapeHtml(text);
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return escapeHtml(text);
+  
+  const before = text.substring(0, idx);
+  const match = text.substring(idx, idx + query.length);
+  const after = text.substring(idx + query.length);
+  
+  return escapeHtml(before) + '<mark>' + escapeHtml(match) + '</mark>' + escapeHtml(after);
+}}
+
+function filterByMethod(methodName, className) {{
+  // Set the search box to filter by method/class
+  const searchInput = document.getElementById('gamecode-search');
+  if (searchInput) {{
+    // Use method name for search, or class if method is generic
+    const searchTerm = methodName.length > 3 ? methodName : className;
+    searchInput.value = searchTerm;
+    filterGameCode();
+    
+    // Scroll to results
+    const results = document.getElementById('gamecode-results');
+    if (results) results.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+  }}
+}}
 ";
     }
 
@@ -1451,6 +1594,78 @@ document.addEventListener('DOMContentLoaded', function() {{
             }
             
             sb.Append("]");
+            sb.Append("}");
+        }
+        sb.Append("]");
+        
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Gets method search data from cg_methods for client-side search.
+    /// Returns a compact format to minimize page size.
+    /// </summary>
+    private static string GetMethodSearchData(SqliteConnection db)
+    {
+        // Check if cg_methods table exists
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='cg_methods'";
+        if (checkCmd.ExecuteScalar() == null)
+        {
+            return "[]";
+        }
+
+        var methods = new List<(int id, string name, string signature, string className, string? filePath, int lineNumber)>();
+        
+        // Query methods (limit to avoid huge page sizes)
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT 
+                m.id,
+                m.name,
+                m.signature,
+                t.full_name,
+                m.file_path,
+                m.line_number
+            FROM cg_methods m
+            JOIN cg_types t ON m.type_id = t.id
+            ORDER BY t.full_name, m.name
+            LIMIT 50000";  // Reasonable limit for browser performance
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            methods.Add((
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt32(5)
+            ));
+        }
+
+        // Build compact JSON - just method name, class name for search
+        // Keep it lightweight by only including searchable fields
+        var sb = new StringBuilder();
+        sb.Append("[");
+        var first = true;
+        foreach (var m in methods)
+        {
+            if (!first) sb.Append(",");
+            first = false;
+            
+            sb.Append("{");
+            sb.Append($"\"n\":{JsonSerializer.Serialize(m.name)},"); // name
+            sb.Append($"\"s\":{JsonSerializer.Serialize(m.signature)},"); // signature
+            sb.Append($"\"c\":{JsonSerializer.Serialize(m.className)},"); // className
+            if (m.filePath != null)
+            {
+                // Extract just the filename
+                var fileName = System.IO.Path.GetFileName(m.filePath);
+                sb.Append($"\"f\":{JsonSerializer.Serialize(fileName)},"); // fileName
+            }
+            sb.Append($"\"l\":{m.lineNumber}"); // lineNumber
             sb.Append("}");
         }
         sb.Append("]");
