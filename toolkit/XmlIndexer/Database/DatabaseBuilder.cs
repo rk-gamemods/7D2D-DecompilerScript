@@ -122,6 +122,157 @@ public static class DatabaseBuilder
         }
     }
 
+    // ============================================================================
+    // FILE HASH HELPERS (for incremental processing)
+    // ============================================================================
+
+    /// <summary>
+    /// Retrieves all stored file hashes from the database.
+    /// Returns a dictionary mapping file paths to their content hashes.
+    /// </summary>
+    public static Dictionary<string, string> GetStoredHashes(SqliteConnection db, string? fileType = null)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        
+        using var cmd = db.CreateCommand();
+        if (fileType != null)
+        {
+            cmd.CommandText = "SELECT file_path, content_hash FROM file_hashes WHERE file_type = $type";
+            cmd.Parameters.AddWithValue("$type", fileType);
+        }
+        else
+        {
+            cmd.CommandText = "SELECT file_path, content_hash FROM file_hashes";
+        }
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            result[reader.GetString(0)] = reader.GetString(1);
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Updates or inserts a file hash record.
+    /// </summary>
+    public static void UpsertFileHash(SqliteConnection db, string filePath, string contentHash, string fileType)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO file_hashes (file_path, content_hash, last_processed, file_type)
+            VALUES ($path, $hash, $time, $type)
+            ON CONFLICT(file_path) DO UPDATE SET
+                content_hash = $hash,
+                last_processed = $time";
+        cmd.Parameters.AddWithValue("$path", filePath);
+        cmd.Parameters.AddWithValue("$hash", contentHash);
+        cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("$type", fileType);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Bulk upsert file hashes for efficiency.
+    /// </summary>
+    public static void BulkUpsertFileHashes(SqliteConnection db, IEnumerable<(string Path, string Hash, string Type)> entries)
+    {
+        using var transaction = db.BeginTransaction();
+        try
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO file_hashes (file_path, content_hash, last_processed, file_type)
+                VALUES ($path, $hash, $time, $type)
+                ON CONFLICT(file_path) DO UPDATE SET
+                    content_hash = $hash,
+                    last_processed = $time";
+            
+            var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+            var pHash = cmd.Parameters.Add("$hash", SqliteType.Text);
+            var pTime = cmd.Parameters.Add("$time", SqliteType.Text);
+            var pType = cmd.Parameters.Add("$type", SqliteType.Text);
+            
+            var now = DateTime.UtcNow.ToString("o");
+            
+            foreach (var (path, hash, type) in entries)
+            {
+                pPath.Value = path;
+                pHash.Value = hash;
+                pTime.Value = now;
+                pType.Value = type;
+                cmd.ExecuteNonQuery();
+            }
+            
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Removes hash entries for files that no longer exist.
+    /// </summary>
+    public static int CleanupDeletedFiles(SqliteConnection db, string fileType, HashSet<string> existingFiles)
+    {
+        var storedHashes = GetStoredHashes(db, fileType);
+        var toDelete = storedHashes.Keys.Where(p => !existingFiles.Contains(p)).ToList();
+        
+        if (toDelete.Count == 0) return 0;
+        
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "DELETE FROM file_hashes WHERE file_path = $path";
+        var pPath = cmd.Parameters.Add("$path", SqliteType.Text);
+        
+        foreach (var path in toDelete)
+        {
+            pPath.Value = path;
+            cmd.ExecuteNonQuery();
+        }
+        
+        return toDelete.Count;
+    }
+
+    /// <summary>
+    /// Compares current file hashes against stored hashes.
+    /// Returns tuple: (changedFiles, unchangedFiles, newFiles, deletedPaths)
+    /// </summary>
+    public static (List<string> Changed, List<string> Unchanged, List<string> New, List<string> Deleted)
+        CompareHashes(Dictionary<string, string> stored, Dictionary<string, string> current)
+    {
+        var changed = new List<string>();
+        var unchanged = new List<string>();
+        var newFiles = new List<string>();
+        var deleted = new List<string>();
+
+        foreach (var kvp in current)
+        {
+            if (stored.TryGetValue(kvp.Key, out var storedHash))
+            {
+                if (storedHash == kvp.Value)
+                    unchanged.Add(kvp.Key);
+                else
+                    changed.Add(kvp.Key);
+            }
+            else
+            {
+                newFiles.Add(kvp.Key);
+            }
+        }
+
+        foreach (var path in stored.Keys)
+        {
+            if (!current.ContainsKey(path))
+                deleted.Add(path);
+        }
+
+        return (changed, unchanged, newFiles, deleted);
+    }
+
     /// <summary>
     /// Complete database schema for XML indexing and mod analysis.
     /// </summary>
@@ -694,6 +845,20 @@ public static class DatabaseBuilder
         CREATE INDEX IF NOT EXISTS idx_method_calls_caller ON method_calls(caller_file);
         CREATE INDEX IF NOT EXISTS idx_method_calls_target ON method_calls(target_class, target_method);
         CREATE INDEX IF NOT EXISTS idx_method_calls_hash ON method_calls(file_hash);
+
+        -- ============================================================================
+        -- FILE HASHES TABLE (for incremental processing)
+        -- ============================================================================
+        -- Tracks content hashes to detect changed files and skip unchanged ones
+        
+        CREATE TABLE IF NOT EXISTS file_hashes (
+            file_path TEXT PRIMARY KEY,
+            content_hash TEXT NOT NULL,
+            last_processed TEXT NOT NULL,
+            file_type TEXT NOT NULL  -- 'xml', 'cs', 'mod_folder', etc.
+        );
+        CREATE INDEX IF NOT EXISTS idx_file_hashes_type ON file_hashes(file_type);
+        CREATE INDEX IF NOT EXISTS idx_file_hashes_processed ON file_hashes(last_processed);
 
         -- ============================================================================
         -- HARMONY CONFLICT DETECTION VIEWS
