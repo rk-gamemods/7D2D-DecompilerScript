@@ -32,7 +32,7 @@ public static class DatabaseBuilder
             
             if (tableExists)
             {
-                // Schema exists, just ensure file_hashes table exists with correct columns
+                // Schema exists, ensure all incrementally-added tables exist
                 checkCmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS file_hashes (
                         file_path TEXT PRIMARY KEY,
@@ -41,6 +41,9 @@ public static class DatabaseBuilder
                         file_type TEXT NOT NULL
                     )";
                 checkCmd.ExecuteNonQuery();
+                
+                // Ensure relevance scoring tables exist (added in v2)
+                EnsureRelevanceScoringTables(db);
                 return; // Skip full schema recreation
             }
         }
@@ -63,6 +66,134 @@ public static class DatabaseBuilder
             DELETE FROM xml_definitions;
             DELETE FROM xml_stats;
             DELETE FROM file_hashes WHERE file_type = 'game_xml';
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Ensures relevance scoring tables exist (for database migration).
+    /// Called by EnsureSchema for existing databases.
+    /// </summary>
+    private static void EnsureRelevanceScoringTables(SqliteConnection db)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            -- Store computed relevance scores for each finding
+            CREATE TABLE IF NOT EXISTS code_relevance (
+                id INTEGER PRIMARY KEY,
+                analysis_id INTEGER NOT NULL,
+                connectivity_score INTEGER DEFAULT 0,
+                entity_score INTEGER DEFAULT 0,
+                mod_score INTEGER DEFAULT 0,
+                keyword_score INTEGER DEFAULT 0,
+                artifact_penalty INTEGER DEFAULT 0,
+                total_score INTEGER DEFAULT 0,
+                computed_at TEXT NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES game_code_analysis(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_relevance_analysis ON code_relevance(analysis_id);
+            CREATE INDEX IF NOT EXISTS idx_relevance_total ON code_relevance(total_score DESC);
+
+            -- Configurable weights for tuning without code changes
+            CREATE TABLE IF NOT EXISTS relevance_weights (
+                id INTEGER PRIMARY KEY,
+                factor_name TEXT UNIQUE NOT NULL,
+                weight REAL DEFAULT 1.0,
+                description TEXT
+            );
+
+            -- Curated keywords that indicate important functionality
+            CREATE TABLE IF NOT EXISTS important_keywords (
+                id INTEGER PRIMARY KEY,
+                keyword TEXT NOT NULL,
+                category TEXT,
+                multiplier REAL DEFAULT 1.0,
+                UNIQUE(keyword, category)
+            );
+            CREATE INDEX IF NOT EXISTS idx_keywords_category ON important_keywords(category);
+        ";
+        cmd.ExecuteNonQuery();
+        
+        // Seed default weights if empty
+        SeedRelevanceWeights(db);
+        
+        // Seed default keywords if empty
+        SeedImportantKeywords(db);
+    }
+
+    /// <summary>
+    /// Seeds default relevance weights if the table is empty.
+    /// </summary>
+    private static void SeedRelevanceWeights(SqliteConnection db)
+    {
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM relevance_weights";
+        var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+        if (count > 0) return;
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO relevance_weights (factor_name, weight, description) VALUES
+            ('connectivity', 1.0, 'Weight for usage level and caller count'),
+            ('entity', 1.2, 'Weight for entity type importance (Item, Block, etc.)'),
+            ('mod', 1.5, 'Weight for mod cross-references (highest - most actionable)'),
+            ('keyword', 0.8, 'Weight for keyword matches in class/method names')
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Seeds default important keywords if the table is empty.
+    /// </summary>
+    private static void SeedImportantKeywords(SqliteConnection db)
+    {
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM important_keywords";
+        var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+        if (count > 0) return;
+
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO important_keywords (keyword, category, multiplier) VALUES
+            -- Inventory (high interest)
+            ('Inventory', 'inventory', 1.5),
+            ('Backpack', 'inventory', 1.3),
+            ('ItemStack', 'inventory', 1.2),
+            ('Container', 'inventory', 1.2),
+            ('Slot', 'inventory', 1.1),
+            -- Combat (high interest)
+            ('Damage', 'combat', 1.3),
+            ('Attack', 'combat', 1.2),
+            ('Weapon', 'combat', 1.2),
+            ('EntityAlive', 'combat', 1.1),
+            ('Hit', 'combat', 1.1),
+            -- Crafting
+            ('Recipe', 'crafting', 1.3),
+            ('Craft', 'crafting', 1.2),
+            ('Workstation', 'crafting', 1.2),
+            -- Progression
+            ('Skill', 'progression', 1.2),
+            ('Perk', 'progression', 1.2),
+            ('Level', 'progression', 1.1),
+            ('XP', 'progression', 1.1),
+            -- Trading
+            ('Trader', 'trading', 1.3),
+            ('Vending', 'trading', 1.2),
+            ('Buy', 'trading', 1.1),
+            ('Sell', 'trading', 1.1),
+            -- Spawning
+            ('Spawn', 'spawning', 1.2),
+            ('Sleeper', 'spawning', 1.2),
+            ('Horde', 'spawning', 1.1),
+            -- Network
+            ('NetPackage', 'network', 1.2),
+            ('RPC', 'network', 1.1),
+            ('Sync', 'network', 1.1),
+            -- Artifacts (negative - reduce score)
+            ('Debug', 'artifact', -0.5),
+            ('Test', 'artifact', -0.3),
+            ('Dump', 'artifact', -0.3),
+            ('Log', 'artifact', -0.2)
         ";
         cmd.ExecuteNonQuery();
     }
@@ -1505,5 +1636,43 @@ public static class DatabaseBuilder
         );
         CREATE INDEX IF NOT EXISTS idx_cg_impl_type ON cg_implements(type_id);
         CREATE INDEX IF NOT EXISTS idx_cg_impl_interface ON cg_implements(interface_name);
+
+        -- ============================================================================
+        -- RELEVANCE SCORING TABLES (for prioritizing game code findings)
+        -- ============================================================================
+
+        -- Store computed relevance scores for each finding
+        CREATE TABLE IF NOT EXISTS code_relevance (
+            id INTEGER PRIMARY KEY,
+            analysis_id INTEGER NOT NULL,
+            connectivity_score INTEGER DEFAULT 0,
+            entity_score INTEGER DEFAULT 0,
+            mod_score INTEGER DEFAULT 0,
+            keyword_score INTEGER DEFAULT 0,
+            artifact_penalty INTEGER DEFAULT 0,
+            total_score INTEGER DEFAULT 0,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (analysis_id) REFERENCES game_code_analysis(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_relevance_analysis ON code_relevance(analysis_id);
+        CREATE INDEX IF NOT EXISTS idx_relevance_total ON code_relevance(total_score DESC);
+
+        -- Configurable weights for tuning without code changes
+        CREATE TABLE IF NOT EXISTS relevance_weights (
+            id INTEGER PRIMARY KEY,
+            factor_name TEXT UNIQUE NOT NULL,
+            weight REAL DEFAULT 1.0,
+            description TEXT
+        );
+
+        -- Curated keywords that indicate important functionality
+        CREATE TABLE IF NOT EXISTS important_keywords (
+            id INTEGER PRIMARY KEY,
+            keyword TEXT NOT NULL,
+            category TEXT,
+            multiplier REAL DEFAULT 1.0,
+            UNIQUE(keyword, category)
+        );
+        CREATE INDEX IF NOT EXISTS idx_keywords_category ON important_keywords(category);
     ";
 }
