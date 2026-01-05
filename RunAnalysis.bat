@@ -90,8 +90,20 @@ echo.
 :: Run the analysis from toolkit directory
 cd /d "!TOOLKIT_DIR!"
 
+:: Ensure Release build exists (faster than dotnet run)
+if not exist "bin\Release\net8.0\XmlIndexer.exe" (
+    echo  [*] Building toolkit ^(first run only^)...
+    dotnet build -c Release -v q --nologo
+    if !ERRORLEVEL! NEQ 0 (
+        echo  [X] Build failed!
+        pause
+        exit /b 1
+    )
+)
+
 :: Build command with optional codebase path
-set "CMD=dotnet run -- report "!GAME_PATH!" "!MODS_PATH!" "!REPORT_DIR!" --open"
+:: Use compiled binary for faster startup and caching
+set "CMD=bin\Release\net8.0\XmlIndexer.exe report "!GAME_PATH!" "!MODS_PATH!" "!REPORT_DIR!" --open"
 if not "!CODEBASE_PATH!"=="" set "CMD=!CMD! --codebase "!CODEBASE_PATH!""
 
 !CMD!
