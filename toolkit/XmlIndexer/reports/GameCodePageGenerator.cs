@@ -237,65 +237,70 @@ function renderFindings(findings) {{
 }}
 
 function renderFinding(f, idx) {{
-  const severityClass = {{
-    'BUG': 'tag-high',
-    'WARNING': 'tag-medium',
-    'OPPORTUNITY': 'tag-low',
-    'INFO': 'tag-info'
-  }}[f.severity] || 'tag-info';
-  
-  const usageLevelColors = {{
-    'active': {{ bg: 'rgba(46, 204, 113, 0.2)', border: 'rgba(46, 204, 113, 0.5)', text: '#27ae60', label: 'Active' }},
-    'moderate': {{ bg: 'rgba(52, 152, 219, 0.2)', border: 'rgba(52, 152, 219, 0.5)', text: '#3498db', label: 'Moderate' }},
-    'low': {{ bg: 'rgba(241, 196, 15, 0.2)', border: 'rgba(241, 196, 15, 0.5)', text: '#f39c12', label: 'Low Usage' }},
-    'internal': {{ bg: 'rgba(149, 165, 166, 0.2)', border: 'rgba(149, 165, 166, 0.5)', text: '#7f8c8d', label: 'Internal' }},
-    'unused': {{ bg: 'rgba(231, 76, 60, 0.2)', border: 'rgba(231, 76, 60, 0.5)', text: '#e74c3c', label: 'Unused' }},
-    'unknown': {{ bg: 'rgba(155, 89, 182, 0.2)', border: 'rgba(155, 89, 182, 0.5)', text: '#9b59b6', label: 'Unknown' }}
+  // === SEVERITY STYLING (prominent, used for left border and badge) ===
+  const severityColors = {{
+    'BUG':         {{ bg: 'rgba(231, 76, 60, 0.15)', border: '#e74c3c', text: '#e74c3c' }},
+    'WARNING':     {{ bg: 'rgba(243, 156, 18, 0.15)', border: '#f39c12', text: '#f39c12' }},
+    'OPPORTUNITY': {{ bg: 'rgba(46, 204, 113, 0.15)', border: '#2ecc71', text: '#27ae60' }},
+    'INFO':        {{ bg: 'rgba(52, 152, 219, 0.15)', border: '#3498db', text: '#3498db' }}
   }};
+  
+  const sc = severityColors[f.severity] || severityColors['INFO'];
+  
+  // === USAGE LEVEL STYLING (MUTED gray colors - NO bright colors, NO RED for unused) ===
+  const usageLevelStyle = {{
+    'active':   {{ label: 'Active',   color: '#7f8c8d' }},
+    'moderate': {{ label: 'Moderate', color: '#7f8c8d' }},
+    'low':      {{ label: 'Low',      color: '#95a5a6' }},
+    'internal': {{ label: 'Internal', color: '#95a5a6' }},
+    'unused':   {{ label: 'Unused',   color: '#bdc3c7' }},
+    'unknown':  {{ label: 'Unknown',  color: '#7f8c8d' }}
+  }};
+  
+  const ul = usageLevelStyle[f.usageLevel] || usageLevelStyle['unknown'];
 
   const fileName = f.filePath ? f.filePath.split(/[/\\\\]/).pop() : '';
 
-  let html = '<div class=""conflict-group"" style=""margin-bottom: 0.75rem;"">';
+  // Card with severity-colored left border
+  let html = '<div class=""finding-card"" style=""border-left: 3px solid ' + sc.border + '; margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 4px;"">';
 
-  // Header with usage level badge
-  html += '<div class=""group-header"" style=""display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;"">';
-  html += '<span class=""tag ' + severityClass + ' compact-tag"">' + f.type.replace(/_/g, ' ') + '</span>';
+  // === HEADER ROW ===
+  html += '<div class=""finding-header"" style=""display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;"">';
   
-  // Usage level badge
-  if (f.usageLevel) {{
-    const ul = usageLevelColors[f.usageLevel] || usageLevelColors['unknown'];
-    html += '<span class=""tag"" style=""background: ' + ul.bg + '; border: 1px solid ' + ul.border + '; color: ' + ul.text + '; font-size: 10px;"">' + ul.label + '</span>';
+  // Severity badge (prominent)
+  html += '<span class=""tag"" style=""background:' + sc.bg + ';color:' + sc.text + ';border:1px solid ' + sc.border + ';padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;"">' + (f.severity || 'INFO') + '</span>';
+  
+  // Usage level badge (MUTED - just gray text)
+  if (f.usageLevel && f.usageLevel !== 'unknown') {{
+    html += '<span style=""color:' + ul.color + ';font-size:10px;padding:2px 6px;"">' + ul.label + '</span>';
   }}
   
-  html += '<code style=""font-size: 12px;"">' + escapeHtml(f.className) + (f.methodName ? '.' + escapeHtml(f.methodName) : '') + '</code>';
-  if (fileName && f.lineNumber) {{
-    html += '<span class=""text-dim"" style=""font-size: 11px; margin-left: auto;"">' + escapeHtml(fileName) + ':' + f.lineNumber + '</span>';
-  }}
+  // Class.Method name
+  html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;"">' + escapeHtml(f.className) + '.' + escapeHtml(f.methodName || '?') + '</span>';
   html += '</div>';
 
-  // Body
-  html += '<div class=""conflict-stack"" style=""padding: 0.75rem;"">';
+  // File location
+  html += '<div class=""finding-location"" style=""font-size:12px;color:#7f8c8d;margin:0.25rem 0;"">' + escapeHtml(fileName) + ':' + (f.lineNumber || '?') + '</div>';
 
-  // Description with XML status indicator
-  if (f.description) {{
-    html += '<div style=""margin-bottom: 0.5rem;"">';
-    if (f.xmlStatus === 'found') {{
-      html += '<span class=""tag tag-healthy"" style=""font-size: 10px; margin-right: 0.5rem;"">In XML</span>';
-    }} else if (f.xmlStatus === 'code_only') {{
-      html += '<span class=""tag tag-review"" style=""font-size: 10px; margin-right: 0.5rem;"">Code Only</span>';
-    }}
-    html += escapeHtml(f.description);
-    html += '</div>';
+  // === XML STATUS & DESCRIPTION ===
+  html += '<div style=""margin: 0.5rem 0;"">';
+  if (f.xmlStatus) {{
+    const statusText = f.xmlStatus === 'in_xml' || f.xmlStatus === 'found' ? 'In XML' : 'Code Only';
+    const statusBg = f.xmlStatus === 'in_xml' || f.xmlStatus === 'found' ? 'rgba(46, 204, 113, 0.2)' : 'rgba(243, 156, 18, 0.2)';
+    const statusColor = f.xmlStatus === 'in_xml' || f.xmlStatus === 'found' ? '#27ae60' : '#f39c12';
+    html += '<span class=""tag"" style=""background:' + statusBg + ';color:' + statusColor + ';padding:2px 6px;border-radius:3px;font-size:10px;margin-right:0.5rem;"">' + statusText + '</span>';
   }}
+  html += '<span class=""finding-description"">' + escapeHtml(f.description || '') + '</span>';
+  html += '</div>';
 
   // Entity link for cross-reference
-  if (f.entityName && f.xmlStatus === 'found') {{
+  if (f.entityName && (f.xmlStatus === 'found' || f.xmlStatus === 'in_xml')) {{
     html += '<div style=""margin-bottom: 0.5rem; font-size: 12px;"">';
     html += '<a href=""entities.html?search=' + encodeURIComponent(f.entityName) + '"" class=""mod-link"">View ' + escapeHtml(f.entityName) + ' in Entities</a>';
     html += '</div>';
   }}
 
-  // REACHABILITY SECTION - Comprehensive usage analysis
+  // === REACHABILITY SECTION (collapsible, subtle background) ===
   if (f.reachability) {{
     const r = f.reachability;
     const usageLevel = r.usage_level || r.usageLevel || 'unknown';
@@ -305,27 +310,27 @@ function renderFinding(f, idx) {{
     const externalCallerCount = r.external_caller_count || r.externalCallerCount || 0;
     const callChains = r.call_chains || r.callChains || [];
     
-    const ul = usageLevelColors[usageLevel] || usageLevelColors['unknown'];
-    
-    html += '<details class=""reachability-section"" style=""margin-bottom: 0.5rem;"">';
-    html += '<summary style=""cursor: pointer; padding: 0.5rem; background: ' + ul.bg + '; border: 1px solid ' + ul.border + '; border-radius: 4px;"">';
-    html += '<span style=""font-weight: 600; color: ' + ul.text + ';"">Reachability: ' + ul.label + '</span>';
-    html += '<span class=""text-dim"" style=""margin-left: 0.5rem; font-size: 11px;"">(' + Math.round(confidence * 100) + '% confidence, ' + callerCount + ' callers)</span>';
+    html += '<details class=""reachability-section"" style=""background:rgba(149,165,166,0.05);border-radius:4px;margin:0.75rem 0;border:1px solid rgba(149,165,166,0.1);"">';
+    html += '<summary style=""padding:0.75rem;cursor:pointer;font-size:13px;"">';
+    html += '<strong>Reachability Analysis</strong> ';
+    html += '<span style=""color:#95a5a6;font-size:12px;"">(' + Math.round(confidence * 100) + '% confidence, ' + callerCount + ' callers)</span>';
     html += '</summary>';
-    html += '<div style=""padding: 0.75rem; border: 1px solid ' + ul.border + '; border-top: none; border-radius: 0 0 4px 4px; background: var(--bg-secondary);"">';
+    html += '<div style=""padding:0 0.75rem 0.75rem 0.75rem;"">';
     
-    // Reasoning
+    // Reasoning text
     if (reasoning) {{
-      html += '<div style=""font-size: 12px; margin-bottom: 0.5rem;"">' + escapeHtml(reasoning) + '</div>';
+      html += '<p style=""margin:0.25rem 0;color:#7f8c8d;font-size:12px;"">' + escapeHtml(reasoning) + '</p>';
     }}
     
-    // Call chains - render as visual execution tree
+    // Call chains visualization with proper tree connectors
     if (callChains.length > 0) {{
-      html += '<div style=""margin-top: 0.5rem;"">';
-      html += '<div style=""font-size: 11px; font-weight: 600; margin-bottom: 0.5rem;"">Execution Path (how this code gets called):</div>';
-      callChains.slice(0, 3).forEach((chain, i) => {{
-        html += '<div style=""font-family: monospace; font-size: 11px; background: var(--bg-primary); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.5rem;"">';
-        chain.forEach((node, j) => {{
+      html += '<div class=""call-chains"" style=""margin-top:0.75rem;"">';
+      html += '<strong style=""font-size:12px;color:#7f8c8d;"">Call Chains:</strong>';
+      
+      callChains.slice(0, 3).forEach(function(chain) {{
+        html += '<div class=""call-chain"" style=""font-family:monospace;font-size:11px;padding:0.5rem;margin-top:0.25rem;background:var(--bg-primary);border-radius:3px;"">';
+        
+        chain.forEach(function(node, j) {{
           const entryType = node.entry_point_type || node.entryPointType;
           const methodClass = node['class'] || node.className || '';
           const methodName = node.method || node.methodName || '';
@@ -333,28 +338,29 @@ function renderFinding(f, idx) {{
           const indent = '&nbsp;&nbsp;'.repeat(j);
           const connector = j === 0 ? '' : '└─ ';
           
-          // Entry point badges with colors
+          // Entry point badge for first node (prominent colors)
           let badge = '';
           if (entryType) {{
             const badgeColors = {{
-              'console': {{ bg: 'rgba(155, 89, 182, 0.3)', text: '#9b59b6', label: 'CONSOLE CMD' }},
-              'unity': {{ bg: 'rgba(46, 204, 113, 0.3)', text: '#27ae60', label: 'UNITY' }},
-              'event': {{ bg: 'rgba(52, 152, 219, 0.3)', text: '#3498db', label: 'EVENT' }},
-              'main': {{ bg: 'rgba(241, 196, 15, 0.3)', text: '#f39c12', label: 'MAIN' }}
+              'console': {{ bg: '#9b59b6', label: 'CONSOLE CMD' }},
+              'unity':   {{ bg: '#27ae60', label: 'UNITY' }},
+              'event':   {{ bg: '#3498db', label: 'EVENT' }},
+              'main':    {{ bg: '#f1c40f', label: 'MAIN' }}
             }};
-            const bc = badgeColors[entryType] || {{ bg: 'rgba(149, 165, 166, 0.3)', text: '#7f8c8d', label: entryType.toUpperCase() }};
-            badge = '<span style=""background: ' + bc.bg + '; color: ' + bc.text + '; padding: 1px 4px; border-radius: 3px; font-size: 9px; margin-right: 4px;"">' + bc.label + '</span>';
+            const bc = badgeColors[entryType] || {{ bg: '#7f8c8d', label: entryType.toUpperCase() }};
+            const textColor = entryType === 'main' ? '#333' : '#fff';
+            badge = '<span style=""background:' + bc.bg + ';color:' + textColor + ';padding:1px 4px;border-radius:2px;font-size:9px;font-weight:bold;margin-right:4px;"">' + bc.label + '</span>';
           }}
           
-          html += '<div style=""' + (isTarget ? 'font-weight: bold; color: var(--accent-primary);' : '') + '"">';
+          html += '<div style=""' + (isTarget ? 'font-weight:bold;color:var(--accent);' : '') + '"">';
           html += indent + connector + badge + escapeHtml(methodClass + '.' + methodName);
-          if (isTarget) html += ' ◀ THIS CODE';
+          if (isTarget) html += ' <span style=""color:var(--accent);"">◀ THIS CODE</span>';
           html += '</div>';
         }});
         html += '</div>';
       }});
       if (callChains.length > 3) {{
-        html += '<div class=""text-dim"" style=""font-size: 10px;"">...and ' + (callChains.length - 3) + ' more execution paths</div>';
+        html += '<div class=""text-dim"" style=""font-size:10px;margin-top:0.25rem;"">...and ' + (callChains.length - 3) + ' more execution paths</div>';
       }}
       html += '</div>';
     }}
@@ -362,71 +368,79 @@ function renderFinding(f, idx) {{
     html += '</div></details>';
   }}
   
-  // CALLERS TABLE - Show who calls the method containing this entity
+  // === METHOD CALLERS SECTION (collapsible, subtle) ===
   if (f.deadCodeAnalysis) {{
     const dca = f.deadCodeAnalysis;
     const callers = dca.method_callers || dca.methodCallers || [];
     
     if (callers.length > 0) {{
-      const methodLabel = f.methodName ? ' (' + escapeHtml(f.methodName) + ')' : '';
-      html += '<details class=""callers-section"" style=""margin-bottom: 0.5rem;"">';
-      html += '<summary style=""cursor: pointer; font-size: 12px;"">Method Callers' + methodLabel + ' (' + callers.length + ' locations)</summary>';
-      html += '<div style=""padding: 0.5rem; background: var(--bg-secondary); border-radius: 4px; margin-top: 0.25rem;"">';
-      html += '<div style=""font-size: 10px; color: var(--text-muted); margin-bottom: 0.5rem; font-style: italic;"">These call the method containing this reference - see highlighted entity in method body below</div>';
+      const methodLabel = f.methodName ? ' for ' + escapeHtml(f.methodName) + '()' : '';
+      html += '<details class=""callers-section"" style=""margin:0.75rem 0;"">';
+      html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(149,165,166,0.05);border-radius:4px;border:1px solid rgba(149,165,166,0.1);"">';
+      html += '<strong>Method Callers' + methodLabel + '</strong> ';
+      html += '<span style=""color:#95a5a6;font-size:12px;"">(' + callers.length + ' locations)</span>';
+      html += '</summary>';
+      html += '<div style=""padding:0.5rem;"">';
       
-      callers.slice(0, 5).forEach(c => {{
+      callers.slice(0, 5).forEach(function(c) {{
         const callerClass = c.caller_class || c.callerClass || '';
         const callerMethod = c.caller_method || c.callerMethod || '';
         const filePath = c.file_path || c.filePath || '';
         const lineNum = c.line_number || c.lineNumber || 0;
         const snippet = c.code_snippet || c.codeSnippet || '';
         
-        html += '<div style=""border-bottom: 1px solid var(--border); padding: 0.5rem 0;"">';
-        html += '<div style=""display: flex; justify-content: space-between; align-items: center;"">';
-        html += '<code style=""font-size: 11px;"">' + escapeHtml(callerClass + '.' + callerMethod) + '</code>';
-        html += '<span class=""text-dim"" style=""font-size: 10px;"">' + escapeHtml(filePath) + ':' + lineNum + '</span>';
-        html += '</div>';
+        html += '<div style=""border-left:2px solid #95a5a6;padding-left:0.5rem;margin:0.5rem 0;"">';
+        html += '<code style=""font-size:11px;color:var(--accent);"">' + escapeHtml(callerClass + '.' + callerMethod) + '()</code>';
+        if (filePath || lineNum) {{
+          html += '<span style=""color:#95a5a6;font-size:10px;margin-left:0.5rem;"">' + escapeHtml(filePath) + (lineNum ? ':' + lineNum : '') + '</span>';
+        }}
         if (snippet) {{
-          html += '<pre style=""font-size: 10px; margin: 0.25rem 0 0 0; padding: 0.5rem; background: var(--bg-primary); border-radius: 4px; overflow-x: auto; white-space: pre-wrap;"">' + escapeHtml(snippet) + '</pre>';
+          html += '<pre style=""font-size:10px;margin:0.25rem 0 0 0;padding:0.4rem;background:var(--bg-primary);border-radius:3px;overflow-x:auto;white-space:pre-wrap;color:#7f8c8d;"">' + escapeHtml(snippet) + '</pre>';
         }}
         html += '</div>';
       }});
       
       if (callers.length > 5) {{
-        html += '<div class=""text-dim"" style=""font-size: 10px; padding-top: 0.5rem;"">...and ' + (callers.length - 5) + ' more callers</div>';
+        html += '<div style=""color:#95a5a6;font-size:10px;padding-top:0.25rem;"">...and ' + (callers.length - 5) + ' more callers</div>';
       }}
       
       html += '</div></details>';
     }}
   }}
 
-  // SEMANTIC CONTEXT - Show semantic analysis for all hardcoded entities
+  // === SEMANTIC CONTEXT SECTION (collapsible, subtle blue/purple gradient) ===
   if (f.semanticContext) {{
     const sc = f.semanticContext;
-    const category = sc.category || '';
+    const category = sc.category || 'Unknown';
     const reasoning = sc.reasoning || '';
     const moddability = sc.moddability_level || sc.moddabilityLevel || '';
     const concerns = sc.related_concerns || sc.relatedConcerns || [];
     
-    html += '<details class=""semantic-context"" style=""margin-bottom: 0.5rem;"">';
-    html += '<summary style=""cursor: pointer; font-size: 12px;"">Semantic Analysis: ' + escapeHtml(category) + '</summary>';
-    html += '<div style=""background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(155, 89, 182, 0.1) 100%); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 4px; padding: 0.75rem; margin-top: 0.25rem;"">';
+    html += '<details class=""semantic-context"" style=""margin:0.75rem 0;"">';
+    html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:linear-gradient(135deg,rgba(52,152,219,0.08) 0%,rgba(155,89,182,0.08) 100%);border-radius:4px;border:1px solid rgba(52,152,219,0.15);"">';
+    html += '<strong>Semantic Analysis</strong> ';
+    html += '<span style=""color:#3498db;font-size:12px;"">' + escapeHtml(category) + '</span>';
+    html += '</summary>';
+    html += '<div style=""padding:0.5rem;"">';
     
-    // Moddability
     if (moddability) {{
-      html += '<div style=""font-size: 11px; margin-bottom: 0.5rem;""><strong>Moddability:</strong> ' + escapeHtml(moddability) + '</div>';
+      const moddColors = {{
+        'high':   {{ color: '#27ae60', label: 'High - Easy to mod' }},
+        'medium': {{ color: '#f39c12', label: 'Medium - Possible' }},
+        'low':    {{ color: '#e74c3c', label: 'Low - Difficult' }}
+      }};
+      const mc = moddColors[moddability.toLowerCase()] || {{ color: '#95a5a6', label: moddability }};
+      html += '<div style=""margin-bottom:0.5rem;font-size:12px;""><strong>Moddability:</strong> <span style=""color:' + mc.color + ';"">' + mc.label + '</span></div>';
     }}
     
-    // Semantic reasoning
     if (reasoning) {{
-      html += '<div style=""font-size: 12px; color: var(--text-secondary); margin-bottom: 0.5rem;"">' + escapeHtml(reasoning) + '</div>';
+      html += '<p style=""font-size:12px;color:#7f8c8d;margin:0.25rem 0;"">' + escapeHtml(reasoning) + '</p>';
     }}
     
-    // Related concerns
     if (concerns.length > 0) {{
-      html += '<div style=""display: flex; flex-wrap: wrap; gap: 0.25rem;"">';
-      concerns.forEach(c => {{
-        html += '<span class=""tag tag-info"" style=""font-size: 9px; padding: 0.15rem 0.4rem;"">' + escapeHtml(c) + '</span>';
+      html += '<div style=""margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.25rem;"">';
+      concerns.forEach(function(c) {{
+        html += '<span style=""background:rgba(52,152,219,0.1);color:#3498db;font-size:10px;padding:2px 6px;border-radius:3px;"">' + escapeHtml(c) + '</span>';
       }});
       html += '</div>';
     }}
@@ -434,50 +448,62 @@ function renderFinding(f, idx) {{
     html += '</div></details>';
   }}
 
-  // Fuzzy matches for code-only entities
+  // === FUZZY MATCHES SECTION (collapsible, subtle) ===
   if (f.fuzzyMatches && Array.isArray(f.fuzzyMatches) && f.fuzzyMatches.length > 0) {{
-    html += '<details class=""fuzzy-matches"" style=""margin-bottom: 0.5rem;"">';
-    html += '<summary style=""cursor: pointer; font-size: 12px;"">Similar Entities Found (' + f.fuzzyMatches.length + ')</summary>';
-    html += '<div style=""background: var(--bg-secondary); border-radius: 4px; padding: 0.5rem; margin-top: 0.25rem;"">';
-    f.fuzzyMatches.forEach(m => {{
+    html += '<details class=""fuzzy-matches"" style=""margin:0.75rem 0;"">';
+    html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(155,89,182,0.05);border-radius:4px;border:1px solid rgba(155,89,182,0.1);"">';
+    html += '<strong>Similar Entities</strong> ';
+    html += '<span style=""color:#95a5a6;font-size:12px;"">(' + f.fuzzyMatches.length + ' potential matches)</span>';
+    html += '</summary>';
+    html += '<div style=""padding:0.5rem;"">';
+    f.fuzzyMatches.forEach(function(m) {{
       const scorePercent = Math.round((m.score || 0) * 100);
-      html += '<div style=""display: flex; align-items: center; gap: 0.5rem; font-size: 12px; margin-top: 0.25rem;"">';
-      html += '<a href=""entities.html?search=' + encodeURIComponent(m.name || '') + '"" class=""mod-link"">' + escapeHtml(m.name || '') + '</a>';
-      html += '<span class=""text-dim"">(' + scorePercent + '% match)</span>';
+      const scoreColor = scorePercent >= 80 ? '#27ae60' : scorePercent >= 60 ? '#f39c12' : '#95a5a6';
+      html += '<div style=""display:flex;align-items:center;gap:0.5rem;font-size:12px;padding:0.25rem 0;"">';
+      html += '<span style=""color:' + scoreColor + ';font-weight:bold;font-size:11px;min-width:35px;"">' + scorePercent + '%</span>';
+      html += '<a href=""entities.html?search=' + encodeURIComponent(m.name || '') + '"" style=""color:var(--accent);text-decoration:none;"">' + escapeHtml(m.name || '') + '</a>';
       if (m.reason) {{
-        html += '<span class=""text-dim"" style=""font-size: 10px;"">- ' + escapeHtml(m.reason) + '</span>';
+        html += '<span style=""color:#95a5a6;font-size:10px;"">(' + escapeHtml(m.reason) + ')</span>';
       }}
       html += '</div>';
     }});
     html += '</div></details>';
   }}
 
-  // Code snippet (collapsible) - now shows full method body with entity highlighted
+  // === CODE SNIPPET SECTION (full method body with entity highlighted) ===
   if (f.codeSnippet) {{
-    html += '<details class=""xml-expand"" open>';
-    html += '<summary>Show Method Body</summary>';
-    // Highlight the entity name in the code if we have one
+    html += '<details class=""code-section"" style=""margin:0.75rem 0;"">';
+    html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(52,73,94,0.1);border-radius:4px;border:1px solid rgba(52,73,94,0.2);"">';
+    html += '<strong>Method Body</strong>';
+    if (f.methodName) {{
+      html += ' <code style=""font-size:11px;color:#3498db;"">' + escapeHtml(f.methodName) + '()</code>';
+    }}
+    html += '</summary>';
+    
+    // Highlight the entity name in the code
     let codeHtml = escapeHtml(f.codeSnippet);
     if (f.entityName) {{
-      // Escape regex special chars in entity name, then highlight all occurrences
       const entityEscaped = f.entityName.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
       const regex = new RegExp('(' + entityEscaped + ')', 'gi');
-      codeHtml = codeHtml.replace(regex, '<mark style=""background: rgba(241, 196, 15, 0.4); padding: 0 2px; border-radius: 2px;"">$1</mark>');
+      codeHtml = codeHtml.replace(regex, '<mark style=""background:rgba(241,196,15,0.5);padding:0 2px;border-radius:2px;color:#000;"">$1</mark>');
     }}
-    html += '<pre class=""xml-inline"" style=""max-height: 400px; overflow: auto;"">' + codeHtml + '</pre>';
+    html += '<pre style=""font-size:11px;line-height:1.4;max-height:500px;overflow:auto;padding:0.75rem;background:var(--bg-primary);border-radius:4px;margin:0.5rem 0 0 0;border:1px solid var(--border);"">' + codeHtml + '</pre>';
     html += '</details>';
   }}
 
-  // Potential fix / suggestion
+  // === POTENTIAL FIX / SUGGESTION ===
   if (f.potentialFix) {{
-    html += '<div class=""text-muted"" style=""font-size: 11px; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 4px;"">' + escapeHtml(f.potentialFix) + '</div>';
+    html += '<div style=""margin:0.75rem 0;padding:0.75rem;background:rgba(46,204,113,0.08);border-left:3px solid #27ae60;border-radius:0 4px 4px 0;"">';
+    html += '<strong style=""color:#27ae60;font-size:12px;"">💡 Suggestion:</strong> ';
+    html += '<span style=""font-size:12px;color:#7f8c8d;"">' + escapeHtml(f.potentialFix) + '</span>';
+    html += '</div>';
   }}
 
-  // Reasoning (additional context, collapsed by default)
+  // === WHY THIS MATTERS (collapsed reasoning) ===
   if (f.reasoning && f.reasoning !== f.description) {{
-    html += '<details class=""xml-expand"" style=""margin-top: 0.25rem;"">';
-    html += '<summary style=""font-size: 11px;"">Why this matters</summary>';
-    html += '<div style=""padding: 0.5rem; font-size: 12px; color: var(--text-muted);"">' + escapeHtml(f.reasoning) + '</div>';
+    html += '<details style=""margin:0.5rem 0;"">';
+    html += '<summary style=""cursor:pointer;font-size:11px;color:#95a5a6;"">Why this matters</summary>';
+    html += '<div style=""padding:0.5rem;font-size:12px;color:#7f8c8d;background:var(--bg-secondary);border-radius:4px;margin-top:0.25rem;"">' + escapeHtml(f.reasoning) + '</div>';
     html += '</details>';
   }}
 
