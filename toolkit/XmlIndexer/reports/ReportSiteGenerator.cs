@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using XmlIndexer.Analysis;
+using XmlIndexer.Database;
 using XmlIndexer.Models;
 
 namespace XmlIndexer.Reports;
@@ -20,6 +21,9 @@ public static class ReportSiteGenerator
     /// <returns>Path to the generated folder</returns>
     public static string Generate(SqliteConnection db, string outputDir, long buildTimeMs = 0, string? gameCodebasePath = null)
     {
+        // Ensure schema is up-to-date (adds new tables like relevance scoring)
+        DatabaseBuilder.EnsureSchema(db);
+        
         // Create timestamped folder
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
         var siteFolder = Path.Combine(outputDir, $"ecosystem_{timestamp}");
@@ -54,6 +58,10 @@ public static class ReportSiteGenerator
                 var gameAnalyzer = new GameCodeAnalyzer(db);
                 gameAnalyzer.AnalyzeGameCode(gameCodebasePath);
                 Console.WriteLine($"      Analyzed {gameAnalyzer.FilesAnalyzed} files, found {gameAnalyzer.FindingsTotal} issues");
+                
+                // Compute relevance scores for all findings
+                var scorer = new RelevanceScorer(db);
+                scorer.ComputeScores();
             }
             catch (Exception ex)
             {
