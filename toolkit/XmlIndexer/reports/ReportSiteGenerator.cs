@@ -72,6 +72,11 @@ public static class ReportSiteGenerator
         File.WriteAllText(cssPath, SharedAssets.GetStylesCss());
         Console.WriteLine("    ✓ assets/styles.css");
 
+        // Write Cytoscape.js for offline call graph visualization
+        var cytoscapePath = Path.Combine(assetsFolder, "cytoscape.min.js");
+        WriteCytoscapeJs(cytoscapePath);
+        Console.WriteLine("    ✓ assets/cytoscape.min.js");
+
         // Generate each page
         GeneratePage(siteFolder, "index.html", () => IndexPageGenerator.Generate(reportData, extendedData, buildTimeMs));
         GeneratePage(siteFolder, "entities.html", () => EntityPageGenerator.Generate(reportData, extendedData));
@@ -94,5 +99,32 @@ public static class ReportSiteGenerator
         var content = generator();
         File.WriteAllText(path, content);
         Console.WriteLine($"    ✓ {fileName}");
+    }
+
+    /// <summary>
+    /// Extracts Cytoscape.js from embedded resource and writes to output path.
+    /// Falls back to a minimal error message if resource not found.
+    /// </summary>
+    private static void WriteCytoscapeJs(string outputPath)
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var resourceName = "XmlIndexer.Assets.cytoscape.min.js";
+        
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream != null)
+        {
+            using var fileStream = File.Create(outputPath);
+            stream.CopyTo(fileStream);
+        }
+        else
+        {
+            // Fallback: write a stub that shows an error
+            File.WriteAllText(outputPath, @"
+// Cytoscape.js not found in embedded resources
+// Call graph visualization will not work
+console.error('Cytoscape.js embedded resource not found. Run: dotnet build to include Assets/cytoscape.min.js');
+window.cytoscape = function() { return { on: function(){}, nodes: function(){ return { forEach: function(){}, length: 0 }; }, edges: function(){ return { length: 0 }; }, layout: function(){ return { run: function(){} }; }, destroy: function(){} }; };
+");
+        }
     }
 }

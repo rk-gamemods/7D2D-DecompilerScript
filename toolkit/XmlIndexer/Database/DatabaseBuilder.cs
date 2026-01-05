@@ -447,12 +447,23 @@ public static class DatabaseBuilder
     /// <summary>
     /// Copies call graph data from callgraph_full.db into ecosystem.db.
     /// This consolidates all analysis data into a single database for simpler queries.
+    /// Uses hash-based caching to skip consolidation if source hasn't changed.
     /// </summary>
     public static void ConsolidateCallGraph(SqliteConnection db, string callgraphDbPath)
     {
         if (!File.Exists(callgraphDbPath))
         {
             Console.WriteLine($"  ⚠ CallGraph database not found at: {callgraphDbPath}");
+            return;
+        }
+
+        // Check if source has changed using hash-based caching
+        var sourceHash = ComputeFileHash(callgraphDbPath);
+        var storedHash = GetStoredHash(db, "callgraph_source");
+        
+        if (sourceHash == storedHash && HasCallGraphData(db))
+        {
+            Console.WriteLine($"  ✓ Call graph unchanged                              [Skip - Cached]");
             return;
         }
 
@@ -506,6 +517,9 @@ public static class DatabaseBuilder
 
             transaction.Commit();
             
+            // Store hash after successful consolidation
+            StoreHash(db, "callgraph_source", sourceHash);
+            
             sw.Stop();
             Console.WriteLine($"  ✓ Consolidated: {typesCount:N0} types, {methodsCount:N0} methods, {callsCount:N0} calls, {externalCount:N0} external, {implCount:N0} implements ({sw.ElapsedMilliseconds}ms)");
         }
@@ -516,6 +530,49 @@ public static class DatabaseBuilder
             detachCmd.CommandText = "DETACH DATABASE cg_source";
             detachCmd.ExecuteNonQuery();
         }
+    }
+
+    /// <summary>
+    /// Computes SHA256 hash of a file for cache invalidation.
+    /// </summary>
+    private static string ComputeFileHash(string filePath)
+    {
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        using var stream = File.OpenRead(filePath);
+        var hash = sha256.ComputeHash(stream);
+        return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
+    /// Gets a stored hash from the file_hashes table.
+    /// </summary>
+    private static string? GetStoredHash(SqliteConnection db, string key)
+    {
+        try
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "SELECT hash FROM file_hashes WHERE file_path = $key AND file_type = 'cache_key'";
+            cmd.Parameters.AddWithValue("$key", key);
+            return cmd.ExecuteScalar() as string;
+        }
+        catch
+        {
+            return null; // Table might not exist yet
+        }
+    }
+
+    /// <summary>
+    /// Stores a hash in the file_hashes table for caching.
+    /// </summary>
+    private static void StoreHash(SqliteConnection db, string key, string hash)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR REPLACE INTO file_hashes (file_path, hash, file_type, updated_at)
+            VALUES ($key, $hash, 'cache_key', datetime('now'))";
+        cmd.Parameters.AddWithValue("$key", key);
+        cmd.Parameters.AddWithValue("$hash", hash);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>

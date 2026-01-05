@@ -108,6 +108,18 @@ public class Program
                 _dbPath = args[1];
                 return EcosystemCommand.Execute(_dbPath);
 
+            case "generate-site":
+                if (args.Length < 3)
+                {
+                    Console.WriteLine("Usage: XmlIndexer generate-site <db_path> <output_dir> [--codebase <path>] [--open]");
+                    return 1;
+                }
+                _dbPath = args[1];
+                var genSiteOutputDir = args[2];
+                var genSiteCodebase = args.SkipWhile(a => a != "--codebase").Skip(1).FirstOrDefault();
+                var genSiteOpen = args.Contains("--open");
+                return GenerateMultiPageReport(genSiteOutputDir, genSiteOpen, genSiteCodebase);
+
             case "refs":
                 if (args.Length < 4)
                 {
@@ -1782,6 +1794,9 @@ public class Program
         totalSw.Stop();
         var totalTimeMs = totalSw.ElapsedMilliseconds;
 
+        // Get actual finding counts from database
+        var gameCodeSummary = GameCodeAnalyzer.GetSummary(db);
+
         // Inject final build time into index.html
         var indexContent = File.ReadAllText(indexPath);
         var timeStr = $"{totalTimeMs / 1000.0:F1}s";
@@ -1790,8 +1805,19 @@ public class Program
             $"<div class=\"stat\"><span class=\"stat-value\">{timeStr}</span><span class=\"stat-label\">Total Time</span></div>");
         File.WriteAllText(indexPath, indexContent);
 
+        // Print comprehensive build summary
+        Console.WriteLine("\n╔══════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  BUILD SUMMARY                                                   ║");
+        Console.WriteLine("╠══════════════════════════════════════════════════════════════════╣");
+        Console.WriteLine($"║  Game Code Findings:                                             ║");
+        Console.WriteLine($"║    Total: {gameCodeSummary.TotalCount,5} findings                                      ║");
+        Console.WriteLine($"║    • {gameCodeSummary.WarningCount,4} WARNING   • {gameCodeSummary.OpportunityCount,4} OPPORTUNITY                       ║");
+        Console.WriteLine($"║    • {gameCodeSummary.InfoCount,4} INFO      • {gameCodeSummary.BugCount,4} BUG                               ║");
+        Console.WriteLine("╠══════════════════════════════════════════════════════════════════╣");
+        Console.WriteLine($"║  Total Build Time: {timeStr,-10}                                     ║");
+        Console.WriteLine("╚══════════════════════════════════════════════════════════════════╝");
+
         Console.WriteLine($"\n✓ Report generated: {siteFolder}");
-        Console.WriteLine($"  Total time: {timeStr}");
 
         // Open in browser if requested
         if (openAfter)
@@ -1810,7 +1836,7 @@ public class Program
         return 0;
     }
 
-    private static int GenerateMultiPageReport(string outputDir, bool openAfter)
+    private static int GenerateMultiPageReport(string outputDir, bool openAfter, string? codebasePath = null)
     {
         Directory.CreateDirectory(outputDir);
 
@@ -1822,7 +1848,7 @@ public class Program
         db.Open();
 
         // Generate the multi-page site
-        var siteFolder = ReportSiteGenerator.Generate(db, outputDir);
+        var siteFolder = ReportSiteGenerator.Generate(db, outputDir, 0, codebasePath);
         var indexPath = Path.Combine(siteFolder, "index.html");
 
         Console.WriteLine($"\n✓ Multi-page report generated: {siteFolder}");

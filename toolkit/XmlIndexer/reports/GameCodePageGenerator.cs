@@ -113,28 +113,36 @@ public static class GameCodePageGenerator
         body.AppendLine(@"  <button id=""open-callgraph-btn"" onclick=""openCallGraphExplorer()"" style=""padding:0.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;font-size:13px;"">");
         body.AppendLine(@"    📊 Open Call Graph Explorer");
         body.AppendLine(@"  </button>");
+        body.AppendLine(@"  <span id=""cg-context-hint"" style=""margin-left:0.5rem;font-size:12px;color:var(--muted);"">💡 Tip: Click ""🔗 Graph"" on any finding to explore its connections</span>");
         body.AppendLine(@"</div>");
 
         // Call Graph Explorer Modal
         body.AppendLine(@"<div id=""callgraph-modal"" class=""callgraph-modal"" style=""display:none;"">");
         body.AppendLine(@"  <div class=""callgraph-modal-content"">");
         body.AppendLine(@"    <div class=""callgraph-header"">");
-        body.AppendLine(@"      <h3>Call Graph Explorer</h3>");
+        body.AppendLine(@"      <h3 id=""cg-title"">Call Graph Explorer</h3>");
         body.AppendLine(@"      <div class=""callgraph-controls"">");
-        body.AppendLine(@"        <input type=""text"" id=""cg-search"" placeholder=""Search method..."" style=""padding:0.4rem 0.8rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px;"">");
+        body.AppendLine(@"        <input type=""text"" id=""cg-search"" placeholder=""Search method... (Enter to jump)"" style=""padding:0.4rem 0.8rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);width:220px;"">");
         body.AppendLine(@"        <select id=""cg-layout"" style=""padding:0.4rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);"">");
         body.AppendLine(@"          <option value=""cose"">Force-Directed</option>");
-        body.AppendLine(@"          <option value=""dagre"">Hierarchical (dagre)</option>");
         body.AppendLine(@"          <option value=""breadthfirst"">Tree</option>");
         body.AppendLine(@"          <option value=""circle"">Circle</option>");
+        body.AppendLine(@"          <option value=""grid"">Grid</option>");
         body.AppendLine(@"        </select>");
+        body.AppendLine(@"        <div style=""display:flex;gap:2px;"">");
+        body.AppendLine(@"          <button onclick=""zoomIn()"" title=""Zoom In"" style=""padding:0.4rem 0.6rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">➕</button>");
+        body.AppendLine(@"          <button onclick=""zoomOut()"" title=""Zoom Out"" style=""padding:0.4rem 0.6rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">➖</button>");
+        body.AppendLine(@"          <button onclick=""fitGraph()"" title=""Fit All"" style=""padding:0.4rem 0.6rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">📐</button>");
+        body.AppendLine(@"          <button onclick=""centerSelected()"" title=""Center on Selected"" style=""padding:0.4rem 0.6rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">🎯</button>");
+        body.AppendLine(@"        </div>");
         body.AppendLine(@"        <button onclick=""resetCallGraph()"" style=""padding:0.4rem 0.8rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">Reset</button>");
-        body.AppendLine(@"        <button onclick=""closeCallGraphExplorer()"" style=""padding:0.4rem 0.8rem;background:var(--danger);border:none;border-radius:var(--radius);color:white;cursor:pointer;"">Close</button>");
+        body.AppendLine(@"        <button onclick=""closeCallGraphExplorer()"" style=""padding:0.4rem 0.8rem;background:var(--danger);border:none;border-radius:var(--radius);color:white;cursor:pointer;"">✕ Close</button>");
         body.AppendLine(@"      </div>");
         body.AppendLine(@"    </div>");
         body.AppendLine(@"    <div id=""cy"" style=""width:100%;height:500px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);""></div>");
         body.AppendLine(@"    <div id=""cg-info"" style=""padding:1rem;background:var(--bg-secondary);border-radius:var(--radius);margin-top:0.5rem;font-size:12px;"">");
-        body.AppendLine(@"      <p>Click a node to see its connections. Double-click to expand callers/callees.</p>");
+        body.AppendLine(@"      <span style=""color:var(--warning);"">💡 Click ""🔗 Graph"" on any finding to explore its call relationships.</span><br>");
+        body.AppendLine(@"      <span style=""color:var(--muted);"">Or use the search box above to find a method (press Enter to jump).</span>");
         body.AppendLine(@"    </div>");
         body.AppendLine(@"  </div>");
         body.AppendLine(@"</div>");
@@ -149,8 +157,8 @@ public static class GameCodePageGenerator
         // Client-side JavaScript
         var script = GenerateJavaScript(jsonData, typeBrowserData, methodSearchData);
 
-        // Add Cytoscape.js CDN
-        var extraHead = @"<script src=""https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js""></script>";
+        // Add Cytoscape.js from local assets (offline support)
+        var extraHead = @"<script src=""assets/cytoscape.min.js""></script>";
 
         return SharedAssets.WrapPage("Game Code Analysis", "gamecode.html", body.ToString(), script, extraHead);
     }
@@ -439,10 +447,17 @@ function renderFinding(f, idx, typeContext) {{
   
   // Class.Method name (clickable - filters to show all findings in this class)
   // Uses data attributes to avoid JavaScript escaping complexity
-  html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;"">';
+  html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;flex:1;"">';
   html += '<a href=""#"" class=""js-click"" data-action=""filterByClass"" data-arg0=""' + escapeAttr(f.className) + '"" style=""color:inherit;text-decoration:none;border-bottom:1px dashed currentColor;"" title=""Show all findings in this class"">' + escapeHtml(f.className) + '</a>';
   html += '.<span>' + escapeHtml(f.methodName || '?') + '</span>';
   html += '</span>';
+  
+  // Call Graph button (opens explorer focused on this method)
+  html += '<button onclick=""openCallGraphFor(\'' + escapeAttr(f.className) + '\', \'' + escapeAttr(f.methodName || '') + '\')"" ';
+  html += 'style=""padding:3px 8px;font-size:11px;background:var(--bg-primary);border:1px solid var(--border);border-radius:3px;color:var(--text);cursor:pointer;"" ';
+  html += 'title=""Explore call relationships for this method"">';
+  html += '🔗 Graph</button>';
+  
   html += '</div>';
 
   // File location
@@ -837,11 +852,22 @@ document.addEventListener('click', function(e) {{
 // === CALL GRAPH EXPLORER ===
 let cy = null;
 let cgData = {{ nodes: [], edges: [] }};
+let focusedNodeId = null;
+
+// Called from finding cards
+function openCallGraphFor(className, methodName) {{
+  focusedNodeId = className + '.' + (methodName || 'unknown');
+  document.getElementById('cg-title').textContent = 'Call Graph: ' + className + '.' + (methodName || '(class)');
+  openCallGraphExplorer();
+}}
 
 function openCallGraphExplorer() {{
   document.getElementById('callgraph-modal').style.display = 'flex';
   if (!cy) {{
+    buildCallGraphData();
     initCallGraph();
+  }} else if (focusedNodeId) {{
+    focusOnNode(focusedNodeId);
   }}
 }}
 
@@ -849,19 +875,18 @@ function closeCallGraphExplorer() {{
   document.getElementById('callgraph-modal').style.display = 'none';
 }}
 
-function initCallGraph() {{
-  // Build initial graph from findings with reachability/callers data
+// Build graph data once from findings
+function buildCallGraphData() {{
   const nodesMap = new Map();
   const edges = [];
   
   FINDINGS_DATA.forEach(f => {{
-    // Add the finding's class.method as a node
     const nodeId = f.className + '.' + (f.methodName || 'unknown');
     if (!nodesMap.has(nodeId)) {{
       nodesMap.set(nodeId, {{
         data: {{
           id: nodeId,
-          label: (f.methodName || 'unknown'),
+          label: (f.methodName || f.className),
           className: f.className,
           methodName: f.methodName,
           severity: f.severity,
@@ -871,29 +896,16 @@ function initCallGraph() {{
       }});
     }}
     
-    // Add callers from deadCodeAnalysis
+    // Add callers
     if (f.deadCodeAnalysis && f.deadCodeAnalysis.method_callers) {{
       f.deadCodeAnalysis.method_callers.forEach(c => {{
         const callerId = c.caller_class + '.' + c.caller_method;
         if (!nodesMap.has(callerId)) {{
           nodesMap.set(callerId, {{
-            data: {{
-              id: callerId,
-              label: c.caller_method,
-              className: c.caller_class,
-              methodName: c.caller_method,
-              isFinding: false
-            }}
+            data: {{ id: callerId, label: c.caller_method, className: c.caller_class, methodName: c.caller_method, isFinding: false }}
           }});
         }}
-        edges.push({{
-          data: {{
-            id: callerId + '->' + nodeId,
-            source: callerId,
-            target: nodeId,
-            label: 'calls'
-          }}
-        }});
+        edges.push({{ data: {{ id: callerId + '->' + nodeId, source: callerId, target: nodeId }}  }});
       }});
     }}
     
@@ -903,42 +915,61 @@ function initCallGraph() {{
         const calleeId = c.callee_class + '.' + c.callee_method;
         if (!nodesMap.has(calleeId)) {{
           nodesMap.set(calleeId, {{
-            data: {{
-              id: calleeId,
-              label: c.callee_method,
-              className: c.callee_class,
-              methodName: c.callee_method,
-              isFinding: false
-            }}
+            data: {{ id: calleeId, label: c.callee_method, className: c.callee_class, methodName: c.callee_method, isFinding: false }}
           }});
         }}
-        edges.push({{
-          data: {{
-            id: nodeId + '->' + calleeId,
-            source: nodeId,
-            target: calleeId,
-            label: 'calls'
-          }}
-        }});
+        edges.push({{ data: {{ id: nodeId + '->' + calleeId, source: nodeId, target: calleeId }} }});
       }});
     }}
   }});
   
-  cgData = {{
-    nodes: Array.from(nodesMap.values()),
-    edges: edges
-  }};
+  cgData = {{ nodes: Array.from(nodesMap.values()), edges: edges }};
+}}
+
+function getNeighborhood(nodeId, depth) {{
+  const result = new Set([nodeId]);
+  let frontier = new Set([nodeId]);
   
-  // Initialize Cytoscape with limited initial nodes for performance
-  const limitedNodes = cgData.nodes.slice(0, 100);
-  const limitedNodeIds = new Set(limitedNodes.map(n => n.data.id));
-  const limitedEdges = cgData.edges.filter(e => 
-    limitedNodeIds.has(e.data.source) && limitedNodeIds.has(e.data.target)
-  );
+  for (let d = 0; d < depth; d++) {{
+    const nextFrontier = new Set();
+    cgData.edges.forEach(e => {{
+      if (frontier.has(e.data.source)) {{ result.add(e.data.target); nextFrontier.add(e.data.target); }}
+      if (frontier.has(e.data.target)) {{ result.add(e.data.source); nextFrontier.add(e.data.source); }}
+    }});
+    frontier = nextFrontier;
+  }}
+  return result;
+}}
+
+function initCallGraph() {{
+  let initialNodes, initialEdges;
+  
+  if (focusedNodeId && cgData.nodes.find(n => n.data.id === focusedNodeId)) {{
+    // Show focused node + 1 level of neighbors
+    const neighborhood = getNeighborhood(focusedNodeId, 1);
+    initialNodes = cgData.nodes.filter(n => neighborhood.has(n.data.id));
+    initialEdges = cgData.edges.filter(e => neighborhood.has(e.data.source) && neighborhood.has(e.data.target));
+    document.getElementById('cg-info').innerHTML = 
+      '<strong>Centered on: ' + escapeHtml(focusedNodeId) + '</strong><br>' +
+      '<span style=""color:#95a5a6;"">Double-click nodes to expand. Scroll to zoom (smooth). Drag to pan.</span>';
+  }} else {{
+    // No focus - empty state
+    initialNodes = [];
+    initialEdges = [];
+    document.getElementById('cg-info').innerHTML = 
+      '<span style=""color:var(--warning);"">💡 Click ""🔗 Graph"" on any finding to explore its connections.</span><br>' +
+      '<span style=""color:#95a5a6;"">Or search for a method above and press Enter to jump to it.</span>';
+  }}
   
   cy = cytoscape({{
     container: document.getElementById('cy'),
-    elements: {{ nodes: limitedNodes, edges: limitedEdges }},
+    elements: {{ nodes: initialNodes, edges: initialEdges }},
+    
+    // SMOOTH ZOOM - key fix for UX
+    wheelSensitivity: 0.15,  // Much smoother than default 1.0
+    minZoom: 0.1,
+    maxZoom: 3,
+    
     style: [
       {{
         selector: 'node',
@@ -946,139 +977,176 @@ function initCallGraph() {{
           'background-color': function(ele) {{
             if (ele.data('isFinding')) {{
               const sev = ele.data('severity');
-              if (sev === 'BUG') return '#e74c3c';
-              if (sev === 'WARNING') return '#f39c12';
-              if (sev === 'OPPORTUNITY') return '#2ecc71';
-              return '#3498db';
+              return sev === 'BUG' ? '#e74c3c' : sev === 'WARNING' ? '#f39c12' : sev === 'OPPORTUNITY' ? '#2ecc71' : '#3498db';
             }}
             return '#7f8c8d';
           }},
           'label': 'data(label)',
-          'font-size': '10px',
+          'font-size': '11px',
           'text-valign': 'bottom',
-          'text-margin-y': 5,
+          'text-margin-y': 8,
+          'text-outline-color': '#0d1117',
+          'text-outline-width': 2,
+          'text-wrap': 'ellipsis',
+          'text-max-width': '100px',
+          'min-zoomed-font-size': 8,
           'color': '#e6edf3',
-          'width': function(ele) {{ return ele.data('isFinding') ? 25 : 15; }},
-          'height': function(ele) {{ return ele.data('isFinding') ? 25 : 15; }},
-          'border-width': 1,
-          'border-color': '#30363d'
+          'width': function(ele) {{ return ele.data('isFinding') ? 28 : 18; }},
+          'height': function(ele) {{ return ele.data('isFinding') ? 28 : 18; }},
+          'border-width': function(ele) {{ return ele.data('id') === focusedNodeId ? 3 : 1; }},
+          'border-color': function(ele) {{ return ele.data('id') === focusedNodeId ? '#3fb950' : '#30363d'; }}
         }}
       }},
       {{
         selector: 'node:selected',
         style: {{
           'border-width': 3,
-          'border-color': '#3fb950'
+          'border-color': '#58a6ff',
+          'font-size': '13px',
+          'font-weight': 'bold',
+          'text-max-width': '200px'
         }}
       }},
       {{
         selector: 'edge',
         style: {{
-          'width': 1,
+          'width': 1.5,
           'line-color': '#4a5568',
           'target-arrow-color': '#4a5568',
           'target-arrow-shape': 'triangle',
           'curve-style': 'bezier',
-          'arrow-scale': 0.8
+          'arrow-scale': 0.7
         }}
       }},
       {{
         selector: 'edge:selected',
-        style: {{
-          'line-color': '#3fb950',
-          'target-arrow-color': '#3fb950',
-          'width': 2
-        }}
+        style: {{ 'line-color': '#3fb950', 'target-arrow-color': '#3fb950', 'width': 2.5 }}
       }}
     ],
-    layout: {{ name: 'cose', animate: false, nodeDimensionsIncludeLabels: true }}
+    layout: {{ name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, padding: 50 }}
   }});
   
-  // Node click handler - show info
+  // Node click - show info
   cy.on('tap', 'node', function(evt) {{
-    const node = evt.target;
-    const data = node.data();
+    const data = evt.target.data();
     const info = document.getElementById('cg-info');
     info.innerHTML = '<strong>' + escapeHtml(data.className + '.' + data.methodName) + '</strong><br>' +
-      (data.isFinding ? '<span style=""color:var(--accent);"">Finding: ' + (data.type || '') + ' (' + (data.severity || '') + ')</span>' : '<span style=""color:#7f8c8d;"">Referenced method</span>') +
+      (data.isFinding ? '<span style=""color:var(--accent);"">Finding: ' + (data.type || '') + ' (' + (data.severity || '') + ')</span>' : '<span style=""color:#7f8c8d;"">Referenced method (no finding)</span>') +
       '<br><span style=""font-size:11px;color:#95a5a6;"">Double-click to expand connections</span>';
   }});
   
-  // Double-click to expand - show all connections
+  // Double-click to expand
   cy.on('dblclick', 'node', function(evt) {{
-    const nodeId = evt.target.id();
-    expandNode(nodeId);
+    expandNode(evt.target.id());
   }});
   
   // Layout change handler
   document.getElementById('cg-layout').addEventListener('change', function(e) {{
-    const layoutName = e.target.value;
-    cy.layout({{ name: layoutName, animate: true, animationDuration: 300 }}).run();
+    cy.layout({{ name: e.target.value, animate: true, animationDuration: 300, padding: 50 }}).run();
   }});
   
-  // Search handler
+  // Search - Enter to jump
+  document.getElementById('cg-search').addEventListener('keydown', function(e) {{
+    if (e.key === 'Enter') {{
+      const query = e.target.value.toLowerCase();
+      const matching = cy.nodes().filter(n => n.data('id').toLowerCase().includes(query));
+      if (matching.length > 0) {{
+        cy.nodes().unselect();
+        matching[0].select();
+        cy.animate({{ center: {{ eles: matching[0] }}, zoom: 1.5, duration: 300 }});
+      }} else {{
+        // Try full data
+        const fullMatch = cgData.nodes.find(n => n.data.id.toLowerCase().includes(query));
+        if (fullMatch) {{
+          focusedNodeId = fullMatch.data.id;
+          resetCallGraph();
+        }} else {{
+          document.getElementById('cg-info').innerHTML = '<span style=""color:var(--danger);"">No match found for: ' + escapeHtml(query) + '</span>';
+        }}
+      }}
+    }}
+  }});
+  
+  // Search - live dim/highlight
   document.getElementById('cg-search').addEventListener('input', function(e) {{
     const query = e.target.value.toLowerCase();
-    if (!query) {{
-      cy.nodes().style('opacity', 1);
-      return;
-    }}
-    cy.nodes().forEach(node => {{
-      const match = node.data('id').toLowerCase().includes(query);
-      node.style('opacity', match ? 1 : 0.2);
-    }});
+    if (!query) {{ cy.nodes().style('opacity', 1); return; }}
+    cy.nodes().forEach(node => {{ node.style('opacity', node.data('id').toLowerCase().includes(query) ? 1 : 0.2); }});
   }});
   
   updateGraphInfo();
+  
+  // Center on focused node if we have one
+  if (focusedNodeId) {{
+    const focusNode = cy.getElementById(focusedNodeId);
+    if (focusNode.length > 0) {{
+      focusNode.select();
+      setTimeout(() => cy.animate({{ center: {{ eles: focusNode }}, zoom: 1.2, duration: 300 }}), 100);
+    }}
+  }}
+}}
+
+function focusOnNode(nodeId) {{
+  // Check if node exists in current view
+  const node = cy.getElementById(nodeId);
+  if (node.length > 0) {{
+    cy.nodes().unselect();
+    node.select();
+    cy.animate({{ center: {{ eles: node }}, zoom: 1.5, duration: 300 }});
+    return;
+  }}
+  // Node not in view - rebuild centered on it
+  focusedNodeId = nodeId;
+  resetCallGraph();
 }}
 
 function expandNode(nodeId) {{
-  // Find all edges involving this node from full data
   const newNodeIds = new Set();
   cgData.edges.forEach(e => {{
     if (e.data.source === nodeId) newNodeIds.add(e.data.target);
     if (e.data.target === nodeId) newNodeIds.add(e.data.source);
   }});
   
-  // Add missing nodes
   const existingNodeIds = new Set(cy.nodes().map(n => n.id()));
   cgData.nodes.forEach(n => {{
-    if (newNodeIds.has(n.data.id) && !existingNodeIds.has(n.data.id)) {{
-      cy.add(n);
-    }}
+    if (newNodeIds.has(n.data.id) && !existingNodeIds.has(n.data.id)) cy.add(n);
   }});
   
-  // Add missing edges
   const existingEdgeIds = new Set(cy.edges().map(e => e.id()));
   cgData.edges.forEach(e => {{
-    if (!existingEdgeIds.has(e.data.id)) {{
-      const srcExists = cy.getElementById(e.data.source).length > 0;
-      const tgtExists = cy.getElementById(e.data.target).length > 0;
-      if (srcExists && tgtExists) {{
-        cy.add(e);
-      }}
-    }}
+    if (!existingEdgeIds.has(e.data.id) && cy.getElementById(e.data.source).length > 0 && cy.getElementById(e.data.target).length > 0)
+      cy.add(e);
   }});
   
-  // Re-run layout
-  cy.layout({{ name: document.getElementById('cg-layout').value, animate: true }}).run();
+  cy.layout({{ name: document.getElementById('cg-layout').value, animate: true, padding: 50 }}).run();
   updateGraphInfo();
 }}
 
 function resetCallGraph() {{
-  if (cy) {{
-    cy.destroy();
-    cy = null;
-  }}
+  document.getElementById('cg-title').textContent = focusedNodeId ? 'Call Graph: ' + focusedNodeId : 'Call Graph Explorer';
+  if (cy) {{ cy.destroy(); cy = null; }}
   initCallGraph();
 }}
 
+// Zoom controls
+function zoomIn() {{ if (cy) cy.zoom({{ level: cy.zoom() * 1.3, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }}); }}
+function zoomOut() {{ if (cy) cy.zoom({{ level: cy.zoom() * 0.7, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }}); }}
+function fitGraph() {{ if (cy) cy.fit(50); }}
+function centerSelected() {{ 
+  if (cy) {{ 
+    const selected = cy.$(':selected');
+    if (selected.length > 0) cy.animate({{ center: {{ eles: selected }}, duration: 300 }});
+  }}
+}}
+
 function updateGraphInfo() {{
+  if (!cy) return;
   const nodeCount = cy.nodes().length;
   const edgeCount = cy.edges().length;
-  const info = document.getElementById('cg-info');
-  info.innerHTML = '<span>Showing <strong>' + nodeCount + '</strong> methods and <strong>' + edgeCount + '</strong> call relationships</span>' +
-    '<br><span style=""font-size:11px;color:#95a5a6;"">Click a node to see details. Double-click to expand its connections.</span>';
+  document.getElementById('cg-info').innerHTML = 
+    '<span>Showing <strong>' + nodeCount + '</strong> methods, <strong>' + edgeCount + '</strong> calls</span>' +
+    (cgData.nodes.length > 0 ? ' <span style=""color:#95a5a6;"">(of ' + cgData.nodes.length + ' total)</span>' : '') +
+    '<br><span style=""font-size:11px;color:#95a5a6;"">Click node for details. Double-click to expand. Scroll to zoom.</span>';
 }}
 
 // === TYPE BROWSER ===

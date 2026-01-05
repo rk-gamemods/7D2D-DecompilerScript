@@ -546,9 +546,14 @@ public class GameCodeAnalyzer
     private static string? FindEnclosingMethod(string[] lines, int lineIndex)
     {
         // Look backwards for a method declaration
+        // Handles: public, private, protected, internal
+        // Modifiers: static, virtual, override, abstract, sealed, async, new, extern, unsafe, partial
         for (int i = lineIndex; i >= 0; i--)
         {
-            var match = Regex.Match(lines[i], @"(?:public|private|protected|internal)\s+(?:static\s+)?(?:\w+(?:<[^>]+>)?)\s+(\w+)\s*\(");
+            var match = Regex.Match(lines[i], 
+                @"(?:public|private|protected|internal)\s+" +
+                @"(?:(?:static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial)\s+)*" +
+                @"(?:\w+(?:<[^>]+>)?)\s+(\w+)\s*\(");
             if (match.Success)
                 return match.Groups[1].Value;
 
