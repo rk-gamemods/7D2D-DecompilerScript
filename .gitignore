@@ -2,5 +2,15 @@
 7D2DCodebase/
 7D2DCodebase_*/
 test.db
+
+# Build outputs
+bin/
+obj/
+
+# Production output folder (contains ecosystem.db and generated reports)
+output/
+
+# Legacy locations (cleaned up)
 toolkit/XmlIndexer/reports/ecosystem_*/
+toolkit/XmlIndexer/reports/ecosystem.db
 toolkit/XmlIndexer/--output/

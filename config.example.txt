@@ -23,3 +23,12 @@ MODS_PATH=
 # Example:
 #   CODEBASE_PATH=C:\Users\Admin\Documents\GIT\GameMods\7D2DMods\7D2DCodebase
 CODEBASE_PATH=
+
+# OUTPUT LOCATIONS
+# ================
+# The analyzer outputs to ./output/ folder by default:
+#   - ecosystem.db: The analysis database (single canonical location)
+#   - ecosystem_YYYY-MM-DD_HHMM/: Generated HTML report folders
+#
+# This keeps generated artifacts separate from source code.
+# The output/ folder is git-ignored.

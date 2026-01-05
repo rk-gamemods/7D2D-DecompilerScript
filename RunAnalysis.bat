@@ -10,7 +10,7 @@ echo  ========================================
 echo.
 
 set "TOOLKIT_DIR=%~dp0toolkit\XmlIndexer"
-set "REPORT_DIR=%TOOLKIT_DIR%\reports"
+set "OUTPUT_DIR=%~dp0output"
 set "CONFIG_FILE=%~dp0config.txt"
 
 :: Load config file if it exists
@@ -80,7 +80,7 @@ echo.
 echo  Configuration:
 echo    Game: !GAME_PATH!
 echo    Mods: !MODS_PATH!
-echo    Output: !REPORT_DIR!
+echo    Output: !OUTPUT_DIR!
 echo.
 echo  ----------------------------------------
 echo   Running Analysis...
@@ -103,7 +103,7 @@ if not exist "bin\Release\net8.0\XmlIndexer.exe" (
 
 :: Build command with optional codebase path
 :: Use compiled binary for faster startup and caching
-set "CMD=bin\Release\net8.0\XmlIndexer.exe report "!GAME_PATH!" "!MODS_PATH!" "!REPORT_DIR!" --open"
+set "CMD=bin\Release\net8.0\XmlIndexer.exe report "!GAME_PATH!" "!MODS_PATH!" "!OUTPUT_DIR!" --open"
 if not "!CODEBASE_PATH!"=="" set "CMD=!CMD! --codebase "!CODEBASE_PATH!""
 
 !CMD!
