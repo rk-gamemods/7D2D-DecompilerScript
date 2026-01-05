@@ -286,6 +286,24 @@ public class Program
                 _dbPath = args[1];
                 return DetectHarmonyConflicts();
 
+            // ═══════════════════════════════════════════════════════════════════════════
+            // TESTING COMMANDS
+            // ═══════════════════════════════════════════════════════════════════════════
+
+            case "test-hasher":
+                return Tests.ContentHasherTests.Run();
+
+            case "test-jsclick":
+                return Tests.JsClickBuilderTests.Run();
+
+            case "test-all":
+                Console.WriteLine("Running all unit tests...\n");
+                var hasherResult = Tests.ContentHasherTests.Run();
+                Console.WriteLine();
+                var jsclickResult = Tests.JsClickBuilderTests.Run();
+                Console.WriteLine($"\n=== OVERALL: {(hasherResult + jsclickResult == 0 ? "ALL PASSED" : "SOME FAILED")} ===");
+                return (hasherResult + jsclickResult) > 0 ? 1 : 0;
+
             default:
                 PrintUsage();
                 return 1;
