@@ -1702,6 +1702,40 @@ public class Program
 
         BuildDependencyGraph();  // Return code indicates conflict severity, not failure
 
+        // STEP 2.5: Consolidate call graph data from CallGraphExtractor
+        Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Console.WriteLine("CONSOLIDATING CALL GRAPH DATA");
+        Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+        using (var cgDb = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            cgDb.Open();
+            // Try multiple locations to find callgraph_full.db
+            var candidatePaths = new[]
+            {
+                // Same folder as ecosystem.db
+                Path.Combine(Path.GetDirectoryName(_dbPath) ?? "", "callgraph_full.db"),
+                // Toolkit folder relative to XmlIndexer
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "callgraph_full.db"),
+                // Relative to output dir
+                Path.Combine(Path.GetDirectoryName(outputDir) ?? "", "7D2D-DecompilerScript", "toolkit", "callgraph_full.db"),
+            };
+            
+            var callgraphPath = candidatePaths.FirstOrDefault(File.Exists);
+            if (callgraphPath != null)
+            {
+                callgraphPath = Path.GetFullPath(callgraphPath);
+                Database.DatabaseBuilder.ConsolidateCallGraph(cgDb, callgraphPath);
+            }
+            else
+            {
+                Console.WriteLine("  ⚠ callgraph_full.db not found - skipping call graph consolidation");
+                Console.WriteLine("    Checked:");
+                foreach (var p in candidatePaths)
+                    Console.WriteLine($"      - {Path.GetFullPath(p)}");
+            }
+        }
+
         // STEP 3: Generate report
         Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         Console.WriteLine("GENERATING REPORT");

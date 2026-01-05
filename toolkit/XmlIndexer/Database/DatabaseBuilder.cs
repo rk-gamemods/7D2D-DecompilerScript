@@ -440,6 +440,125 @@ public static class DatabaseBuilder
         return (changed, unchanged, newFiles, deleted);
     }
 
+    // ============================================================================
+    // CALL GRAPH CONSOLIDATION (from callgraph_full.db)
+    // ============================================================================
+
+    /// <summary>
+    /// Copies call graph data from callgraph_full.db into ecosystem.db.
+    /// This consolidates all analysis data into a single database for simpler queries.
+    /// </summary>
+    public static void ConsolidateCallGraph(SqliteConnection db, string callgraphDbPath)
+    {
+        if (!File.Exists(callgraphDbPath))
+        {
+            Console.WriteLine($"  ⚠ CallGraph database not found at: {callgraphDbPath}");
+            return;
+        }
+
+        Console.WriteLine($"  📊 Consolidating call graph data from: {Path.GetFileName(callgraphDbPath)}");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // Clear existing call graph data
+        ClearCallGraphData(db);
+
+        // Attach the source database
+        using var attachCmd = db.CreateCommand();
+        attachCmd.CommandText = $"ATTACH DATABASE '{callgraphDbPath.Replace("'", "''")}' AS cg_source";
+        attachCmd.ExecuteNonQuery();
+
+        try
+        {
+            using var transaction = db.BeginTransaction();
+            
+            // Copy types table
+            var typesCount = CopyCallGraphTable(db, @"
+                INSERT INTO cg_types (id, name, namespace, full_name, kind, base_type, assembly, file_path, line_number, is_abstract, is_sealed, is_static)
+                SELECT id, name, namespace, full_name, kind, base_type, assembly, file_path, line_number, is_abstract, is_sealed, is_static
+                FROM cg_source.types");
+            
+            // Copy methods table
+            var methodsCount = CopyCallGraphTable(db, @"
+                INSERT INTO cg_methods (id, type_id, name, signature, return_type, assembly, file_path, line_number, end_line, is_static, is_virtual, is_override, is_abstract, access)
+                SELECT id, type_id, name, signature, return_type, assembly, file_path, line_number, end_line, is_static, is_virtual, is_override, is_abstract, access
+                FROM cg_source.methods");
+            
+            // Copy calls table
+            var callsCount = CopyCallGraphTable(db, @"
+                INSERT INTO cg_calls (id, caller_id, callee_id, file_path, line_number, call_type)
+                SELECT id, caller_id, callee_id, file_path, line_number, call_type
+                FROM cg_source.calls");
+            
+            // Copy external_calls table
+            var externalCount = CopyCallGraphTable(db, @"
+                INSERT INTO cg_external_calls (id, caller_id, target_assembly, target_type, target_method, target_signature, file_path, line_number)
+                SELECT id, caller_id, target_assembly, target_type, target_method, target_signature, file_path, line_number
+                FROM cg_source.external_calls");
+            
+            // Copy implements table
+            var implCount = CopyCallGraphTable(db, @"
+                INSERT INTO cg_implements (id, type_id, interface_name)
+                SELECT id, type_id, interface_name
+                FROM cg_source.implements");
+
+            transaction.Commit();
+            
+            sw.Stop();
+            Console.WriteLine($"  ✓ Consolidated: {typesCount:N0} types, {methodsCount:N0} methods, {callsCount:N0} calls, {externalCount:N0} external, {implCount:N0} implements ({sw.ElapsedMilliseconds}ms)");
+        }
+        finally
+        {
+            // Detach the source database
+            using var detachCmd = db.CreateCommand();
+            detachCmd.CommandText = "DETACH DATABASE cg_source";
+            detachCmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
+    /// Clears all call graph data from ecosystem.db.
+    /// </summary>
+    public static void ClearCallGraphData(SqliteConnection db)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            DELETE FROM cg_implements;
+            DELETE FROM cg_external_calls;
+            DELETE FROM cg_calls;
+            DELETE FROM cg_methods;
+            DELETE FROM cg_types;
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Executes a copy command and returns the number of rows affected.
+    /// </summary>
+    private static int CopyCallGraphTable(SqliteConnection db, string sql)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = sql;
+        return cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Checks if call graph data exists in ecosystem.db.
+    /// </summary>
+    public static bool HasCallGraphData(SqliteConnection db)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM cg_types";
+        try
+        {
+            var count = Convert.ToInt32(cmd.ExecuteScalar());
+            return count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Complete database schema for XML indexing and mod analysis.
     /// </summary>
@@ -1154,5 +1273,90 @@ public static class DatabaseBuilder
                 WHEN 'medium' THEN 2
                 WHEN 'low' THEN 3
             END;
+
+        -- ============================================================================
+        -- CALL GRAPH TABLES (consolidated from CallGraphExtractor)
+        -- ============================================================================
+
+        -- Type definitions (classes, structs, interfaces, enums)
+        CREATE TABLE IF NOT EXISTS cg_types (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            namespace TEXT,
+            full_name TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL,
+            base_type TEXT,
+            assembly TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            is_abstract INTEGER DEFAULT 0,
+            is_sealed INTEGER DEFAULT 0,
+            is_static INTEGER DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_cg_types_name ON cg_types(name);
+        CREATE INDEX IF NOT EXISTS idx_cg_types_base ON cg_types(base_type);
+        CREATE INDEX IF NOT EXISTS idx_cg_types_assembly ON cg_types(assembly);
+
+        -- Method definitions
+        CREATE TABLE IF NOT EXISTS cg_methods (
+            id INTEGER PRIMARY KEY,
+            type_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            return_type TEXT,
+            assembly TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            end_line INTEGER,
+            is_static INTEGER DEFAULT 0,
+            is_virtual INTEGER DEFAULT 0,
+            is_override INTEGER DEFAULT 0,
+            is_abstract INTEGER DEFAULT 0,
+            access TEXT,
+            FOREIGN KEY (type_id) REFERENCES cg_types(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cg_methods_type ON cg_methods(type_id);
+        CREATE INDEX IF NOT EXISTS idx_cg_methods_name ON cg_methods(name);
+        CREATE INDEX IF NOT EXISTS idx_cg_methods_sig ON cg_methods(signature);
+
+        -- Internal method-to-method calls
+        CREATE TABLE IF NOT EXISTS cg_calls (
+            id INTEGER PRIMARY KEY,
+            caller_id INTEGER NOT NULL,
+            callee_id INTEGER NOT NULL,
+            file_path TEXT,
+            line_number INTEGER,
+            call_type TEXT DEFAULT 'direct',
+            FOREIGN KEY (caller_id) REFERENCES cg_methods(id),
+            FOREIGN KEY (callee_id) REFERENCES cg_methods(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cg_calls_caller ON cg_calls(caller_id);
+        CREATE INDEX IF NOT EXISTS idx_cg_calls_callee ON cg_calls(callee_id);
+
+        -- External calls (to Unity, BCL, etc.)
+        CREATE TABLE IF NOT EXISTS cg_external_calls (
+            id INTEGER PRIMARY KEY,
+            caller_id INTEGER NOT NULL,
+            target_assembly TEXT,
+            target_type TEXT NOT NULL,
+            target_method TEXT NOT NULL,
+            target_signature TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            FOREIGN KEY (caller_id) REFERENCES cg_methods(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cg_ext_caller ON cg_external_calls(caller_id);
+        CREATE INDEX IF NOT EXISTS idx_cg_ext_assembly ON cg_external_calls(target_assembly);
+        CREATE INDEX IF NOT EXISTS idx_cg_ext_target ON cg_external_calls(target_type, target_method);
+
+        -- Interface implementations
+        CREATE TABLE IF NOT EXISTS cg_implements (
+            id INTEGER PRIMARY KEY,
+            type_id INTEGER NOT NULL,
+            interface_name TEXT NOT NULL,
+            FOREIGN KEY (type_id) REFERENCES cg_types(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cg_impl_type ON cg_implements(type_id);
+        CREATE INDEX IF NOT EXISTS idx_cg_impl_interface ON cg_implements(interface_name);
     ";
 }
