@@ -735,7 +735,27 @@ public class EntityEnricher
             return $"Code references '{entityName}' ({entityType ?? "unknown type"}) directly in source";
         }
 
-        return $"Detected {category.ToLower()} pattern in game code";
+        // Use specific reasoning for each category to avoid duplication like "code pattern pattern"
+        return category switch
+        {
+            "Code Pattern" => "Pattern detected in game code that may affect mod compatibility",
+            "Extension Point" => "This is an extension point where mods can safely hook in",
+            "Debug Tool" => "Console command or debug utility - only accessible via F1 console",
+            "System Access" => "Accesses a game system singleton - common but may have side effects",
+            "Incomplete Implementation" => "Method is incomplete or stubbed - potential hook point for mods",
+            "Missing Feature" => "Method throws NotImplementedException - safe to ignore unless called",
+            "Error Handling" => "Error handling pattern detected - review for edge cases",
+            "Developer Note" => "Contains TODO or developer comment indicating incomplete work",
+            "Status Effect" => "References a buff/debuff status effect",
+            "Item Reference" => "References an item by name in code",
+            "Block Reference" => "References a block type in code",
+            "Entity Spawn" => "Spawns or references an entity class",
+            "Audio Reference" => "References a sound effect or audio",
+            "Crafting" => "References a crafting recipe",
+            "Quest System" => "References quest or progression system",
+            "Game Entity" => "References a game entity directly in code",
+            _ => $"Found {category.ToLower()} in game code"
+        };
     }
 
     private static string GenerateAdvice(string category, string moddability, string? analysisType)

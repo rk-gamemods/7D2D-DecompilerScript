@@ -299,8 +299,11 @@ function renderFinding(f, idx) {{
     html += '<span style=""color:' + ul.color + ';font-size:10px;padding:2px 6px;"">' + ul.label + '</span>';
   }}
   
-  // Class.Method name
-  html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;"">' + escapeHtml(f.className) + '.' + escapeHtml(f.methodName || '?') + '</span>';
+  // Class.Method name (clickable - filters to show all findings in this class)
+  html += '<span class=""finding-title"" style=""font-weight:600;font-size:14px;"">';
+  html += '<a href=""#"" onclick=""filterByClass(\\'' + escapeHtml(f.className).replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:inherit;text-decoration:none;border-bottom:1px dashed currentColor;"" title=""Show all findings in this class"">' + escapeHtml(f.className) + '</a>';
+  html += '.<span>' + escapeHtml(f.methodName || '?') + '</span>';
+  html += '</span>';
   html += '</div>';
 
   // File location
@@ -376,8 +379,14 @@ function renderFinding(f, idx) {{
             badge = '<span style=""background:' + bc.bg + ';color:' + textColor + ';padding:1px 4px;border-radius:2px;font-size:9px;font-weight:bold;margin-right:4px;"">' + bc.label + '</span>';
           }}
           
+          // Make non-target nodes clickable for navigation
+          let methodLink = escapeHtml(methodClass + '.' + methodName);
+          if (!isTarget && methodClass) {{
+            methodLink = '<a href=""#"" onclick=""filterByClassMethod(\\'' + methodClass.replace(/'/g, ""\\\\'"") + '\\', \\'' + methodName.replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:inherit;text-decoration:underline;text-decoration-style:dotted;"">' + escapeHtml(methodClass + '.' + methodName) + '</a>';
+          }}
+          
           html += '<div style=""' + (isTarget ? 'font-weight:bold;color:var(--accent);' : '') + '"">';
-          html += indent + connector + badge + escapeHtml(methodClass + '.' + methodName);
+          html += indent + connector + badge + methodLink;
           if (isTarget) html += ' <span style=""color:var(--accent);"">◀ THIS CODE</span>';
           html += '</div>';
         }});
@@ -414,7 +423,9 @@ function renderFinding(f, idx) {{
         const snippet = c.code_snippet || c.codeSnippet || '';
         
         html += '<div style=""border-left:2px solid #95a5a6;padding-left:0.5rem;margin:0.5rem 0;"">';
-        html += '<code style=""font-size:11px;color:var(--accent);"">' + escapeHtml(callerClass + '.' + callerMethod) + '()</code>';
+        // Make caller clickable for navigation
+        html += '<a href=""#"" onclick=""filterByClassMethod(\\'' + callerClass.replace(/'/g, ""\\\\'"") + '\\', \\'' + callerMethod.replace(/'/g, ""\\\\'"") + '\\''); return false;"" style=""color:var(--accent);text-decoration:none;"" title=""Find findings in ' + escapeHtml(callerClass) + '"">';
+        html += '<code style=""font-size:11px;"">' + escapeHtml(callerClass + '.' + callerMethod) + '()</code></a>';
         if (filePath || lineNum) {{
           html += '<span style=""color:#95a5a6;font-size:10px;margin-left:0.5rem;"">' + escapeHtml(filePath) + (lineNum ? ':' + lineNum : '') + '</span>';
         }}
@@ -494,24 +505,34 @@ function renderFinding(f, idx) {{
     html += '</div></details>';
   }}
 
-  // === CODE SNIPPET SECTION (full method body with entity highlighted) ===
-  if (f.codeSnippet) {{
-    html += '<details class=""code-section"" style=""margin:0.75rem 0;"">';
+  // === FULL METHOD SOURCE SECTION (uses sourceContext when available) ===
+  const methodBody = (f.sourceContext && f.sourceContext.method_body) ? f.sourceContext.method_body : f.codeSnippet;
+  const lineCount = (f.sourceContext && f.sourceContext.method_end_line && f.sourceContext.method_start_line)
+    ? (f.sourceContext.method_end_line - f.sourceContext.method_start_line + 1)
+    : (methodBody ? methodBody.split('\\n').length : 0);
+
+  if (methodBody) {{
+    html += '<details class=""code-section"" open style=""margin:0.75rem 0;"">';
     html += '<summary style=""padding:0.5rem;cursor:pointer;font-size:13px;background:rgba(52,73,94,0.1);border-radius:4px;border:1px solid rgba(52,73,94,0.2);"">';
-    html += '<strong>Method Body</strong>';
+    html += '<strong>Full Method Source</strong>';
+    html += ' <span style=""color:#95a5a6;font-size:11px;"">(' + lineCount + ' lines)</span>';
     if (f.methodName) {{
       html += ' <code style=""font-size:11px;color:#3498db;"">' + escapeHtml(f.methodName) + '()</code>';
     }}
     html += '</summary>';
     
+    // Container with max-height for scrolling
+    html += '<div style=""max-height:500px;overflow:auto;border:1px solid var(--border);border-radius:4px;margin:0.5rem 0;"">';
+    
     // Highlight the entity name in the code
-    let codeHtml = escapeHtml(f.codeSnippet);
+    let codeHtml = escapeHtml(methodBody);
     if (f.entityName) {{
       const entityEscaped = f.entityName.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
       const regex = new RegExp('(' + entityEscaped + ')', 'gi');
       codeHtml = codeHtml.replace(regex, '<mark style=""background:rgba(241,196,15,0.5);padding:0 2px;border-radius:2px;color:#000;"">$1</mark>');
     }}
-    html += '<pre style=""font-size:11px;line-height:1.4;max-height:500px;overflow:auto;padding:0.75rem;background:var(--bg-primary);border-radius:4px;margin:0.5rem 0 0 0;border:1px solid var(--border);"">' + codeHtml + '</pre>';
+    html += '<pre style=""font-size:11px;line-height:1.4;padding:0.75rem;background:var(--bg-primary);margin:0;white-space:pre;overflow-x:auto;"">' + codeHtml + '</pre>';
+    html += '</div>';
     html += '</details>';
   }}
 
@@ -535,8 +556,44 @@ function renderFinding(f, idx) {{
   return html;
 }}
 
-// Initialize on page load
+// === NAVIGATION HELPER FUNCTIONS ===
+function filterByClass(className) {{
+  // Clear other filters and search for this class
+  document.getElementById('gamecode-search').value = className;
+  document.getElementById('type-filter').value = '';
+  document.getElementById('usage-filter').value = '';
+  currentSeverity = '';
+  // Update URL hash for bookmarking
+  history.pushState(null, '', '#class=' + encodeURIComponent(className));
+  filterGameCode();
+  // Scroll to results
+  document.getElementById('gamecode-results').scrollIntoView({{ behavior: 'smooth' }});
+}}
+
+function filterByClassMethod(className, methodName) {{
+  // Search for specific class.method
+  document.getElementById('gamecode-search').value = className + '.' + methodName;
+  document.getElementById('type-filter').value = '';
+  document.getElementById('usage-filter').value = '';
+  currentSeverity = '';
+  // Update URL hash for bookmarking  
+  history.pushState(null, '', '#class=' + encodeURIComponent(className) + '&method=' + encodeURIComponent(methodName));
+  filterGameCode();
+  document.getElementById('gamecode-results').scrollIntoView({{ behavior: 'smooth' }});
+}}
+
+// Initialize on page load with deep linking support
 document.addEventListener('DOMContentLoaded', function() {{
+  // Check for hash-based deep linking
+  const hash = window.location.hash.substring(1);
+  if (hash) {{
+    const params = new URLSearchParams(hash);
+    const className = params.get('class');
+    const methodName = params.get('method');
+    if (className) {{
+      document.getElementById('gamecode-search').value = methodName ? (className + '.' + methodName) : className;
+    }}
+  }}
   filterGameCode();
 }});
 ";
