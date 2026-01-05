@@ -65,10 +65,13 @@ public static class GameCodePageGenerator
         body.AppendLine(@"    <option value=""hardcoded_entity"">Hardcoded Entities</option>");
         body.AppendLine(@"    <option value=""console_command"">Console Commands</option>");
         body.AppendLine(@"    <option value=""singleton_access"">Singleton Access</option>");
+        body.AppendLine(@"    <option value=""secret"">Hidden Features</option>");
         body.AppendLine(@"    <option value=""stub_method"">Stub Methods</option>");
         body.AppendLine(@"    <option value=""unimplemented"">Not Implemented</option>");
         body.AppendLine(@"    <option value=""empty_catch"">Empty Catch</option>");
         body.AppendLine(@"    <option value=""todo"">TODO/FIXME</option>");
+        body.AppendLine(@"    <option value=""suspicious"">Suspicious Patterns</option>");
+        body.AppendLine(@"    <option value=""unreachable"">Unreachable Code</option>");
         body.AppendLine(@"  </select>");
         body.AppendLine(@"  <select class=""filter-select"" id=""usage-filter"" onchange=""filterGameCode()"">");
         body.AppendLine(@"    <option value="""">All Usage Levels</option>");
@@ -198,20 +201,41 @@ function renderFindings(findings) {{
 
   let html = '';
 
-  // Type order and labels
-  const typeOrder = ['hookable_event', 'hardcoded_entity', 'console_command', 'singleton_access', 'stub_method', 'unimplemented', 'empty_catch', 'todo'];
+  // Type order and labels - sorted by importance, then alphabetical for unlisted types
+  const typeOrder = [
+    'hookable_event', 'hardcoded_entity', 'console_command', 'singleton_access',
+    'secret', 'stub_method', 'unimplemented', 'empty_catch', 'todo',
+    'suspicious', 'unreachable', 'item', 'buff', 'block', 'sound',
+    'entity_class', 'entity_group', 'recipe'
+  ];
   const typeLabels = {{
     'hookable_event': {{ label: 'Hookable Events', desc: 'Virtual methods that can be patched with Harmony or overridden' }},
     'hardcoded_entity': {{ label: 'Hardcoded Entities', desc: 'Items, buffs, and entities referenced in code' }},
     'console_command': {{ label: 'Console Commands', desc: 'Commands available via F1 console' }},
     'singleton_access': {{ label: 'Singleton Access Points', desc: 'Entry points for accessing game systems' }},
+    'secret': {{ label: 'Hidden Features', desc: 'Debug flags, hidden commands, and developer-only features' }},
     'stub_method': {{ label: 'Stub Methods', desc: 'Methods that return null/default - potential hook points' }},
     'unimplemented': {{ label: 'Not Implemented', desc: 'Methods that throw NotImplementedException' }},
     'empty_catch': {{ label: 'Empty Catch Blocks', desc: 'Exception handlers that silently swallow errors' }},
-    'todo': {{ label: 'TODO/FIXME Comments', desc: 'Developer notes about incomplete or problematic code' }}
+    'todo': {{ label: 'TODO/FIXME Comments', desc: 'Developer notes about incomplete or problematic code' }},
+    'suspicious': {{ label: 'Suspicious Patterns', desc: 'Code patterns that may indicate bugs or issues' }},
+    'unreachable': {{ label: 'Unreachable Code', desc: 'Code that appears to never execute' }},
+    'item': {{ label: 'Item References', desc: 'Hardcoded item names in code' }},
+    'buff': {{ label: 'Buff References', desc: 'Hardcoded buff names in code' }},
+    'block': {{ label: 'Block References', desc: 'Hardcoded block names in code' }},
+    'sound': {{ label: 'Sound References', desc: 'Hardcoded sound names in code' }},
+    'entity_class': {{ label: 'Entity Class References', desc: 'Hardcoded entity class names' }},
+    'entity_group': {{ label: 'Entity Group References', desc: 'Hardcoded entity group names' }},
+    'recipe': {{ label: 'Recipe References', desc: 'Hardcoded recipe names in code' }}
   }};
 
-  typeOrder.forEach(type => {{
+  // Get all types from data (handles any new types not in typeOrder)
+  const allTypes = Object.keys(byType);
+  const orderedTypes = typeOrder.filter(t => allTypes.includes(t));
+  const remainingTypes = allTypes.filter(t => !typeOrder.includes(t)).sort();
+  const renderTypes = [...orderedTypes, ...remainingTypes];
+
+  renderTypes.forEach(type => {{
     if (!byType[type] || byType[type].length === 0) return;
 
     const info = typeLabels[type] || {{ label: type, desc: '' }};
