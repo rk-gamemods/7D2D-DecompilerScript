@@ -625,6 +625,57 @@ summary:hover {
   font-size: 13px;
 }
 
+/* Call Graph Explorer Modal */
+.callgraph-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.callgraph-modal-content {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.callgraph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.callgraph-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.callgraph-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Cytoscape node styles applied via JS */
+.cy-node-selected {
+  border-width: 3px;
+  border-color: var(--accent);
+}
+
 /* Glossary styles */
 .glossary-category {
   margin-bottom: 1.5rem;
@@ -974,7 +1025,7 @@ function toggleShowMore(btn, containerId, allItems, renderFn) {
     /// <summary>
     /// Generate the full HTML document wrapper for a page.
     /// </summary>
-    public static string WrapPage(string title, string activePage, string bodyContent, string? extraScript = null)
+    public static string WrapPage(string title, string activePage, string bodyContent, string? extraScript = null, string? extraHead = null)
     {
         return $@"<!DOCTYPE html>
 <html lang=""en"" data-theme=""obsidian"">
@@ -983,6 +1034,7 @@ function toggleShowMore(btn, containerId, allItems, renderFn) {
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
     <title>{HttpUtility.HtmlEncode(title)} - 7D2D Ecosystem</title>
     <link rel=""stylesheet"" href=""assets/styles.css"">
+    {extraHead ?? ""}
 </head>
 <body>
 {GenerateNavigation(activePage)}

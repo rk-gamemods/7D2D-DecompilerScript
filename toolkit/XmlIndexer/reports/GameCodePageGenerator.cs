@@ -84,6 +84,37 @@ public static class GameCodePageGenerator
         body.AppendLine(@"  </select>");
         body.AppendLine(@"</div>");
 
+        // Call Graph Explorer toggle
+        body.AppendLine(@"<div class=""callgraph-toggle"" style=""margin: 1rem 0;"">");
+        body.AppendLine(@"  <button id=""open-callgraph-btn"" onclick=""openCallGraphExplorer()"" style=""padding:0.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;font-size:13px;"">");
+        body.AppendLine(@"    📊 Open Call Graph Explorer");
+        body.AppendLine(@"  </button>");
+        body.AppendLine(@"</div>");
+
+        // Call Graph Explorer Modal
+        body.AppendLine(@"<div id=""callgraph-modal"" class=""callgraph-modal"" style=""display:none;"">");
+        body.AppendLine(@"  <div class=""callgraph-modal-content"">");
+        body.AppendLine(@"    <div class=""callgraph-header"">");
+        body.AppendLine(@"      <h3>Call Graph Explorer</h3>");
+        body.AppendLine(@"      <div class=""callgraph-controls"">");
+        body.AppendLine(@"        <input type=""text"" id=""cg-search"" placeholder=""Search method..."" style=""padding:0.4rem 0.8rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px;"">");
+        body.AppendLine(@"        <select id=""cg-layout"" style=""padding:0.4rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);"">");
+        body.AppendLine(@"          <option value=""cose"">Force-Directed</option>");
+        body.AppendLine(@"          <option value=""dagre"">Hierarchical (dagre)</option>");
+        body.AppendLine(@"          <option value=""breadthfirst"">Tree</option>");
+        body.AppendLine(@"          <option value=""circle"">Circle</option>");
+        body.AppendLine(@"        </select>");
+        body.AppendLine(@"        <button onclick=""resetCallGraph()"" style=""padding:0.4rem 0.8rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;"">Reset</button>");
+        body.AppendLine(@"        <button onclick=""closeCallGraphExplorer()"" style=""padding:0.4rem 0.8rem;background:var(--danger);border:none;border-radius:var(--radius);color:white;cursor:pointer;"">Close</button>");
+        body.AppendLine(@"      </div>");
+        body.AppendLine(@"    </div>");
+        body.AppendLine(@"    <div id=""cy"" style=""width:100%;height:500px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);""></div>");
+        body.AppendLine(@"    <div id=""cg-info"" style=""padding:1rem;background:var(--bg-secondary);border-radius:var(--radius);margin-top:0.5rem;font-size:12px;"">");
+        body.AppendLine(@"      <p>Click a node to see its connections. Double-click to expand callers/callees.</p>");
+        body.AppendLine(@"    </div>");
+        body.AppendLine(@"  </div>");
+        body.AppendLine(@"</div>");
+
         // Results container (client-side rendered)
         body.AppendLine(@"<div id=""gamecode-results""></div>");
 
@@ -94,7 +125,10 @@ public static class GameCodePageGenerator
         // Client-side JavaScript
         var script = GenerateJavaScript(jsonData);
 
-        return SharedAssets.WrapPage("Game Code Analysis", "gamecode.html", body.ToString(), script);
+        // Add Cytoscape.js CDN
+        var extraHead = @"<script src=""https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js""></script>";
+
+        return SharedAssets.WrapPage("Game Code Analysis", "gamecode.html", body.ToString(), script, extraHead);
     }
 
     private static string GenerateJavaScript(string jsonData)
@@ -773,6 +807,253 @@ document.addEventListener('click', function(e) {{
     console.error('Unknown action:', action, 'with args:', args);
   }}
 }});
+
+// === CALL GRAPH EXPLORER ===
+let cy = null;
+let cgData = {{ nodes: [], edges: [] }};
+
+function openCallGraphExplorer() {{
+  document.getElementById('callgraph-modal').style.display = 'flex';
+  if (!cy) {{
+    initCallGraph();
+  }}
+}}
+
+function closeCallGraphExplorer() {{
+  document.getElementById('callgraph-modal').style.display = 'none';
+}}
+
+function initCallGraph() {{
+  // Build initial graph from findings with reachability/callers data
+  const nodesMap = new Map();
+  const edges = [];
+  
+  FINDINGS_DATA.forEach(f => {{
+    // Add the finding's class.method as a node
+    const nodeId = f.className + '.' + (f.methodName || 'unknown');
+    if (!nodesMap.has(nodeId)) {{
+      nodesMap.set(nodeId, {{
+        data: {{
+          id: nodeId,
+          label: (f.methodName || 'unknown'),
+          className: f.className,
+          methodName: f.methodName,
+          severity: f.severity,
+          type: f.type,
+          isFinding: true
+        }}
+      }});
+    }}
+    
+    // Add callers from deadCodeAnalysis
+    if (f.deadCodeAnalysis && f.deadCodeAnalysis.method_callers) {{
+      f.deadCodeAnalysis.method_callers.forEach(c => {{
+        const callerId = c.caller_class + '.' + c.caller_method;
+        if (!nodesMap.has(callerId)) {{
+          nodesMap.set(callerId, {{
+            data: {{
+              id: callerId,
+              label: c.caller_method,
+              className: c.caller_class,
+              methodName: c.caller_method,
+              isFinding: false
+            }}
+          }});
+        }}
+        edges.push({{
+          data: {{
+            id: callerId + '->' + nodeId,
+            source: callerId,
+            target: nodeId,
+            label: 'calls'
+          }}
+        }});
+      }});
+    }}
+    
+    // Add callees
+    if (f.callees && f.callees.callees) {{
+      f.callees.callees.forEach(c => {{
+        const calleeId = c.callee_class + '.' + c.callee_method;
+        if (!nodesMap.has(calleeId)) {{
+          nodesMap.set(calleeId, {{
+            data: {{
+              id: calleeId,
+              label: c.callee_method,
+              className: c.callee_class,
+              methodName: c.callee_method,
+              isFinding: false
+            }}
+          }});
+        }}
+        edges.push({{
+          data: {{
+            id: nodeId + '->' + calleeId,
+            source: nodeId,
+            target: calleeId,
+            label: 'calls'
+          }}
+        }});
+      }});
+    }}
+  }});
+  
+  cgData = {{
+    nodes: Array.from(nodesMap.values()),
+    edges: edges
+  }};
+  
+  // Initialize Cytoscape with limited initial nodes for performance
+  const limitedNodes = cgData.nodes.slice(0, 100);
+  const limitedNodeIds = new Set(limitedNodes.map(n => n.data.id));
+  const limitedEdges = cgData.edges.filter(e => 
+    limitedNodeIds.has(e.data.source) && limitedNodeIds.has(e.data.target)
+  );
+  
+  cy = cytoscape({{
+    container: document.getElementById('cy'),
+    elements: {{ nodes: limitedNodes, edges: limitedEdges }},
+    style: [
+      {{
+        selector: 'node',
+        style: {{
+          'background-color': function(ele) {{
+            if (ele.data('isFinding')) {{
+              const sev = ele.data('severity');
+              if (sev === 'BUG') return '#e74c3c';
+              if (sev === 'WARNING') return '#f39c12';
+              if (sev === 'OPPORTUNITY') return '#2ecc71';
+              return '#3498db';
+            }}
+            return '#7f8c8d';
+          }},
+          'label': 'data(label)',
+          'font-size': '10px',
+          'text-valign': 'bottom',
+          'text-margin-y': 5,
+          'color': '#e6edf3',
+          'width': function(ele) {{ return ele.data('isFinding') ? 25 : 15; }},
+          'height': function(ele) {{ return ele.data('isFinding') ? 25 : 15; }},
+          'border-width': 1,
+          'border-color': '#30363d'
+        }}
+      }},
+      {{
+        selector: 'node:selected',
+        style: {{
+          'border-width': 3,
+          'border-color': '#3fb950'
+        }}
+      }},
+      {{
+        selector: 'edge',
+        style: {{
+          'width': 1,
+          'line-color': '#4a5568',
+          'target-arrow-color': '#4a5568',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          'arrow-scale': 0.8
+        }}
+      }},
+      {{
+        selector: 'edge:selected',
+        style: {{
+          'line-color': '#3fb950',
+          'target-arrow-color': '#3fb950',
+          'width': 2
+        }}
+      }}
+    ],
+    layout: {{ name: 'cose', animate: false, nodeDimensionsIncludeLabels: true }}
+  }});
+  
+  // Node click handler - show info
+  cy.on('tap', 'node', function(evt) {{
+    const node = evt.target;
+    const data = node.data();
+    const info = document.getElementById('cg-info');
+    info.innerHTML = '<strong>' + escapeHtml(data.className + '.' + data.methodName) + '</strong><br>' +
+      (data.isFinding ? '<span style=""color:var(--accent);"">Finding: ' + (data.type || '') + ' (' + (data.severity || '') + ')</span>' : '<span style=""color:#7f8c8d;"">Referenced method</span>') +
+      '<br><span style=""font-size:11px;color:#95a5a6;"">Double-click to expand connections</span>';
+  }});
+  
+  // Double-click to expand - show all connections
+  cy.on('dblclick', 'node', function(evt) {{
+    const nodeId = evt.target.id();
+    expandNode(nodeId);
+  }});
+  
+  // Layout change handler
+  document.getElementById('cg-layout').addEventListener('change', function(e) {{
+    const layoutName = e.target.value;
+    cy.layout({{ name: layoutName, animate: true, animationDuration: 300 }}).run();
+  }});
+  
+  // Search handler
+  document.getElementById('cg-search').addEventListener('input', function(e) {{
+    const query = e.target.value.toLowerCase();
+    if (!query) {{
+      cy.nodes().style('opacity', 1);
+      return;
+    }}
+    cy.nodes().forEach(node => {{
+      const match = node.data('id').toLowerCase().includes(query);
+      node.style('opacity', match ? 1 : 0.2);
+    }});
+  }});
+  
+  updateGraphInfo();
+}}
+
+function expandNode(nodeId) {{
+  // Find all edges involving this node from full data
+  const newNodeIds = new Set();
+  cgData.edges.forEach(e => {{
+    if (e.data.source === nodeId) newNodeIds.add(e.data.target);
+    if (e.data.target === nodeId) newNodeIds.add(e.data.source);
+  }});
+  
+  // Add missing nodes
+  const existingNodeIds = new Set(cy.nodes().map(n => n.id()));
+  cgData.nodes.forEach(n => {{
+    if (newNodeIds.has(n.data.id) && !existingNodeIds.has(n.data.id)) {{
+      cy.add(n);
+    }}
+  }});
+  
+  // Add missing edges
+  const existingEdgeIds = new Set(cy.edges().map(e => e.id()));
+  cgData.edges.forEach(e => {{
+    if (!existingEdgeIds.has(e.data.id)) {{
+      const srcExists = cy.getElementById(e.data.source).length > 0;
+      const tgtExists = cy.getElementById(e.data.target).length > 0;
+      if (srcExists && tgtExists) {{
+        cy.add(e);
+      }}
+    }}
+  }});
+  
+  // Re-run layout
+  cy.layout({{ name: document.getElementById('cg-layout').value, animate: true }}).run();
+  updateGraphInfo();
+}}
+
+function resetCallGraph() {{
+  if (cy) {{
+    cy.destroy();
+    cy = null;
+  }}
+  initCallGraph();
+}}
+
+function updateGraphInfo() {{
+  const nodeCount = cy.nodes().length;
+  const edgeCount = cy.edges().length;
+  const info = document.getElementById('cg-info');
+  info.innerHTML = '<span>Showing <strong>' + nodeCount + '</strong> methods and <strong>' + edgeCount + '</strong> call relationships</span>' +
+    '<br><span style=""font-size:11px;color:#95a5a6;"">Click a node to see details. Double-click to expand its connections.</span>';
+}}
 ";
     }
 

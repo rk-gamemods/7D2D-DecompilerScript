@@ -459,8 +459,11 @@ public static class DatabaseBuilder
         Console.WriteLine($"  📊 Consolidating call graph data from: {Path.GetFileName(callgraphDbPath)}");
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        // Clear existing call graph data
+        // Clear existing call graph data (drops tables)
         ClearCallGraphData(db);
+        
+        // Recreate the cg_* tables
+        CreateCallGraphTables(db);
 
         // Attach the source database
         using var attachCmd = db.CreateCommand();
@@ -520,13 +523,100 @@ public static class DatabaseBuilder
     /// </summary>
     public static void ClearCallGraphData(SqliteConnection db)
     {
+        // Drop tables if they exist to avoid errors on first run
         using var cmd = db.CreateCommand();
         cmd.CommandText = @"
-            DELETE FROM cg_implements;
-            DELETE FROM cg_external_calls;
-            DELETE FROM cg_calls;
-            DELETE FROM cg_methods;
-            DELETE FROM cg_types;
+            DROP TABLE IF EXISTS cg_implements;
+            DROP TABLE IF EXISTS cg_external_calls;
+            DROP TABLE IF EXISTS cg_calls;
+            DROP TABLE IF EXISTS cg_methods;
+            DROP TABLE IF EXISTS cg_types;
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Creates the cg_* tables for call graph data storage.
+    /// </summary>
+    private static void CreateCallGraphTables(SqliteConnection db)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            CREATE TABLE IF NOT EXISTS cg_types (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                namespace TEXT,
+                full_name TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL,
+                base_type TEXT,
+                assembly TEXT,
+                file_path TEXT,
+                line_number INTEGER,
+                is_abstract INTEGER DEFAULT 0,
+                is_sealed INTEGER DEFAULT 0,
+                is_static INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_cg_types_name ON cg_types(name);
+            CREATE INDEX IF NOT EXISTS idx_cg_types_base ON cg_types(base_type);
+            CREATE INDEX IF NOT EXISTS idx_cg_types_assembly ON cg_types(assembly);
+
+            CREATE TABLE IF NOT EXISTS cg_methods (
+                id INTEGER PRIMARY KEY,
+                type_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                signature TEXT NOT NULL,
+                return_type TEXT,
+                assembly TEXT,
+                file_path TEXT,
+                line_number INTEGER,
+                end_line INTEGER,
+                is_static INTEGER DEFAULT 0,
+                is_virtual INTEGER DEFAULT 0,
+                is_override INTEGER DEFAULT 0,
+                is_abstract INTEGER DEFAULT 0,
+                access TEXT,
+                FOREIGN KEY (type_id) REFERENCES cg_types(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cg_methods_type ON cg_methods(type_id);
+            CREATE INDEX IF NOT EXISTS idx_cg_methods_name ON cg_methods(name);
+            CREATE INDEX IF NOT EXISTS idx_cg_methods_sig ON cg_methods(signature);
+
+            CREATE TABLE IF NOT EXISTS cg_calls (
+                id INTEGER PRIMARY KEY,
+                caller_id INTEGER NOT NULL,
+                callee_id INTEGER NOT NULL,
+                file_path TEXT,
+                line_number INTEGER,
+                call_type TEXT DEFAULT 'direct',
+                FOREIGN KEY (caller_id) REFERENCES cg_methods(id),
+                FOREIGN KEY (callee_id) REFERENCES cg_methods(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cg_calls_caller ON cg_calls(caller_id);
+            CREATE INDEX IF NOT EXISTS idx_cg_calls_callee ON cg_calls(callee_id);
+
+            CREATE TABLE IF NOT EXISTS cg_external_calls (
+                id INTEGER PRIMARY KEY,
+                caller_id INTEGER NOT NULL,
+                target_assembly TEXT,
+                target_type TEXT NOT NULL,
+                target_method TEXT NOT NULL,
+                target_signature TEXT,
+                file_path TEXT,
+                line_number INTEGER,
+                FOREIGN KEY (caller_id) REFERENCES cg_methods(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cg_ext_caller ON cg_external_calls(caller_id);
+            CREATE INDEX IF NOT EXISTS idx_cg_ext_assembly ON cg_external_calls(target_assembly);
+            CREATE INDEX IF NOT EXISTS idx_cg_ext_target ON cg_external_calls(target_type, target_method);
+
+            CREATE TABLE IF NOT EXISTS cg_implements (
+                id INTEGER PRIMARY KEY,
+                type_id INTEGER NOT NULL,
+                interface_name TEXT NOT NULL,
+                FOREIGN KEY (type_id) REFERENCES cg_types(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cg_impl_type ON cg_implements(type_id);
+            CREATE INDEX IF NOT EXISTS idx_cg_impl_interface ON cg_implements(interface_name);
         ";
         cmd.ExecuteNonQuery();
     }
