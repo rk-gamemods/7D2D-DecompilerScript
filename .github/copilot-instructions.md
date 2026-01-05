@@ -1,5 +1,22 @@
 # XmlIndexer - Copilot Instructions
 
+## CRITICAL: ALWAYS TEST BEFORE DECLARING COMPLETE
+
+**Never tell the user something is "done" or "complete" until you have:**
+
+1. ✅ **Built the code** - Verify it compiles with 0 errors
+2. ✅ **Run the actual tool** - Execute with real data, not just compile
+3. ✅ **Verify the output** - Check results are correct and match expectations
+4. ✅ **Look for improvements** - After confirming it works, assess if results could be better
+5. ✅ **Only then report completion**
+
+**Common mistakes to avoid:**
+- ❌ "Build succeeded, we're done!" → NO, run the tool with real data
+- ❌ Marking todo items complete just because code was written → NO, test first
+- ❌ Assuming logic is correct because it compiles → NO, runtime behavior matters
+
+---
+
 ## CRITICAL: Project Location
 
 **This project lives at:** `C:\Users\Admin\Documents\GIT\GameMods\7D2DMods\7D2D-DecompilerScript\toolkit\XmlIndexer`

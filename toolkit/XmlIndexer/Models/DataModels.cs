@@ -66,7 +66,12 @@ public record ReportData(
     // Dependency chain data (new)
     int TotalTransitiveRefs,
     List<InheritanceHotspot> InheritanceHotspots,
-    List<EntityDependencyInfo> SampleDependencyChains
+    List<EntityDependencyInfo> SampleDependencyChains,
+    // Game code analysis
+    int GameCodeBugs = 0,
+    int GameCodeWarnings = 0,
+    int GameCodeInfo = 0,
+    int GameCodeOpportunities = 0
 );
 
 /// <summary>Entity with interconnection score (references to/from others)</summary>

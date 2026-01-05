@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using XmlIndexer.Analysis;
 using XmlIndexer.Models;
 
 namespace XmlIndexer.Reports;
@@ -42,6 +43,9 @@ public static class ReportDataCollector
         
         // Dependency chain data (new)
         var (totalTransitiveRefs, inheritanceHotspots, sampleChains) = GetDependencyChainData(db);
+        
+        // Game code analysis
+        var gameCodeSummary = GameCodeAnalyzer.GetSummary(db);
 
         return new ReportData(
             totalDefs, totalProps, totalRefs, defsByType,
@@ -52,7 +56,9 @@ public static class ReportDataCollector
             mostConnected, mostConnectedRefs, mostDepended, mostDependedCount,
             contested, modBehaviors,
             topInterconnected, mostInvasiveMods, propertyConflicts,
-            totalTransitiveRefs, inheritanceHotspots, sampleChains
+            totalTransitiveRefs, inheritanceHotspots, sampleChains,
+            gameCodeSummary.BugCount, gameCodeSummary.WarningCount,
+            gameCodeSummary.InfoCount, gameCodeSummary.OpportunityCount
         );
     }
 
@@ -790,8 +796,7 @@ public static class ReportDataCollector
                 ORDER BY 
                     dependent_count DESC,
                     max_depth DESC,
-                    deps_count DESC
-                LIMIT 100";
+                    deps_count DESC";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {

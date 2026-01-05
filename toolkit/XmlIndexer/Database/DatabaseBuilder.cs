@@ -675,6 +675,27 @@ public static class DatabaseBuilder
         CREATE INDEX idx_alias_file ON type_aliases(file_path);
 
         -- ============================================================================
+        -- METHOD CALL GRAPH TABLE (for incremental call graph analysis)
+        -- ============================================================================
+
+        CREATE TABLE IF NOT EXISTS method_calls (
+            id INTEGER PRIMARY KEY,
+            caller_file TEXT NOT NULL,
+            caller_class TEXT,
+            caller_method TEXT,
+            target_class TEXT NOT NULL,
+            target_method TEXT NOT NULL,
+            call_type TEXT,
+            line_number INTEGER,
+            code_snippet TEXT,
+            file_hash TEXT,
+            UNIQUE(caller_file, line_number, target_class, target_method)
+        );
+        CREATE INDEX IF NOT EXISTS idx_method_calls_caller ON method_calls(caller_file);
+        CREATE INDEX IF NOT EXISTS idx_method_calls_target ON method_calls(target_class, target_method);
+        CREATE INDEX IF NOT EXISTS idx_method_calls_hash ON method_calls(file_hash);
+
+        -- ============================================================================
         -- HARMONY CONFLICT DETECTION VIEWS
         -- ============================================================================
 

@@ -108,6 +108,21 @@ public static class IndexPageGenerator
             }
         ));
 
+        // Game Code Analysis card
+        body.AppendLine(FeatureCard(
+            "gamecode.html",
+            "🔬",
+            "Game Code Analysis",
+            "Discover potential bugs, stubs, dead code, and hidden features in the base game codebase.",
+            "Why useful: Find opportunities to improve or understand game internals.",
+            new[] {
+                ($"{data.GameCodeBugs}", "bugs"),
+                ($"{data.GameCodeWarnings}", "warnings"),
+                ($"{data.GameCodeInfo}", "info"),
+                ($"{data.GameCodeOpportunities}", "opportunities")
+            }
+        ));
+
         // Glossary card
         body.AppendLine(FeatureCard(
             "glossary.html",

@@ -136,15 +136,27 @@ public class Program
             case "report":
                 if (args.Length < 4)
                 {
-                    Console.WriteLine("Usage: XmlIndexer report <game_path> <mods_folder> <output_dir> [--open]");
+                    Console.WriteLine("Usage: XmlIndexer report <game_path> <mods_folder> <output_dir> [--open] [--codebase <path>]");
                     return 1;
                 }
                 _gamePath = args[1];
                 var reportModsPath = args[2];
                 var outputDir = args[3];
                 _dbPath = Path.Combine(outputDir, "ecosystem.db");
-                var openAfter = args.Contains("--open");
-                return GenerateFullReport(reportModsPath, outputDir, openAfter);
+                var openAfter = !args.Contains("--no-open"); // Default to opening browser
+                
+                // Parse --codebase argument
+                string? reportCodebasePath = null;
+                for (int i = 4; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--codebase")
+                    {
+                        reportCodebasePath = args[i + 1];
+                        break;
+                    }
+                }
+                
+                return GenerateFullReport(reportModsPath, outputDir, openAfter, reportCodebasePath);
 
             case "export-semantic-traces":
                 if (args.Length < 3)
@@ -1560,7 +1572,7 @@ public class Program
     /// <summary>
     /// Complete single-command operation: rebuild database + generate report with profiling.
     /// </summary>
-    private static int GenerateFullReport(string modsFolder, string outputDir, bool openAfter)
+    private static int GenerateFullReport(string modsFolder, string outputDir, bool openAfter, string? explicitCodebasePath = null)
     {
         var totalSw = Stopwatch.StartNew();
 
@@ -1598,24 +1610,32 @@ public class Program
         db.Open();
 
         // Try to find decompiled game code for analysis
-        // Look in common locations: relative to game path, or parallel to output
-        string? gameCodebasePath = null;
-        var possibleCodebasePaths = new[]
+        // Use explicit path if provided, otherwise try common locations
+        string? gameCodebasePath = explicitCodebasePath;
+        
+        if (string.IsNullOrEmpty(gameCodebasePath))
         {
-            Path.Combine(Path.GetDirectoryName(outputDir) ?? "", "7D2DCodebase", "Assembly-CSharp"),
-            Path.Combine(outputDir, "..", "7D2DCodebase", "Assembly-CSharp"),
-            Path.Combine(_gamePath ?? "", "..", "7D2DCodebase", "Assembly-CSharp"),
-        };
-
-        foreach (var path in possibleCodebasePaths)
-        {
-            var fullPath = Path.GetFullPath(path);
-            if (Directory.Exists(fullPath))
+            var possibleCodebasePaths = new[]
             {
-                gameCodebasePath = fullPath;
-                Console.WriteLine($"  Found game codebase: {gameCodebasePath}");
-                break;
+                Path.Combine(Path.GetDirectoryName(outputDir) ?? "", "7D2DCodebase", "Assembly-CSharp"),
+                Path.Combine(outputDir, "..", "7D2DCodebase", "Assembly-CSharp"),
+                Path.Combine(_gamePath ?? "", "..", "7D2DCodebase", "Assembly-CSharp"),
+            };
+
+            foreach (var path in possibleCodebasePaths)
+            {
+                var fullPath = Path.GetFullPath(path);
+                if (Directory.Exists(fullPath))
+                {
+                    gameCodebasePath = fullPath;
+                    break;
+                }
             }
+        }
+        
+        if (!string.IsNullOrEmpty(gameCodebasePath))
+        {
+            Console.WriteLine($"  Game codebase: {gameCodebasePath}");
         }
 
         // Generate the multi-page site (time will be injected after)

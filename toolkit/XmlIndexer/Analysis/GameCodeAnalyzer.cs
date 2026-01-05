@@ -79,6 +79,12 @@ public class GameCodeAnalyzer
         transaction.Commit();
 
         Console.WriteLine($"  Analyzed: {FilesAnalyzed} files, Skipped: {FilesSkipped} unchanged");
+        
+        // Also build call graph for method-level analysis
+        Console.WriteLine($"  Building method call graph...");
+        var callGraphAnalyzer = new CallGraphAnalyzer(_db);
+        callGraphAnalyzer.AnalyzeCallGraph(codebasePath, forceReanalyze);
+        Console.WriteLine($"  Call graph: {callGraphAnalyzer.FilesAnalyzed} files, {callGraphAnalyzer.MethodCallsFound} calls found");
         Console.WriteLine($"  Findings: {BugCount} bugs, {WarningCount} warnings, {InfoCount} info, {OpportunityCount} opportunities");
     }
 
@@ -111,6 +117,7 @@ public class GameCodeAnalyzer
         findings.AddRange(DetectUnreachableCode(content, lines, filePath, hash, currentClass));
         findings.AddRange(DetectSuspiciousPatterns(content, lines, filePath, hash, currentClass));
         findings.AddRange(DetectSecretFeatures(content, lines, filePath, hash, currentClass));
+        findings.AddRange(DetectHardcodedEntities(content, lines, filePath, hash, currentClass));
 
         // Persist findings
         foreach (var finding in findings)
@@ -480,6 +487,54 @@ public class GameCodeAnalyzer
         return findings;
     }
 
+    /// <summary>
+    /// Detects hardcoded entity references (buffs, items, blocks, sounds, etc.).
+    /// These are important for modders to know what entities are referenced in code.
+    /// </summary>
+    private List<GameCodeFinding> DetectHardcodedEntities(string content, string[] lines, string filePath, string hash, string className)
+    {
+        var findings = new List<GameCodeFinding>();
+        var seenEntities = new HashSet<string>(); // Dedupe within same file
+        
+        var matches = EntityEnricher.DetectHardcodedEntities(content, lines);
+        
+        foreach (var match in matches)
+        {
+            // Dedupe by entity name within same file
+            var key = $"{match.EntityType}:{match.EntityName}";
+            if (seenEntities.Contains(key))
+                continue;
+            seenEntities.Add(key);
+
+            var methodName = FindEnclosingMethod(lines, match.LineNumber - 1);
+
+            // Build related_entities JSON for enrichment later
+            var relatedEntities = JsonSerializer.Serialize(new
+            {
+                entity_name = match.EntityName,
+                entity_type = match.EntityType
+            });
+
+            findings.Add(CreateFinding(
+                type: "hardcoded_entity",
+                className: className,
+                methodName: methodName,
+                severity: "INFO",
+                confidence: "high",
+                description: $"Hardcoded {match.EntityType}: {match.EntityName}",
+                reasoning: $"Code references '{match.EntityName}' directly - cannot be changed via XML alone",
+                codeSnippet: GetCodeContext(lines, match.LineNumber - 1, 2),
+                filePath: filePath,
+                lineNumber: match.LineNumber,
+                potentialFix: "Use Harmony to patch the method if you need to change this reference",
+                fileHash: hash,
+                relatedEntities: relatedEntities
+            ));
+        }
+
+        return findings;
+    }
+
     // Helper methods
 
     private static string ExtractClassName(string content)
@@ -531,7 +586,7 @@ public class GameCodeAnalyzer
         string type, string className, string? methodName, string severity, string confidence,
         string description, string reasoning, string codeSnippet, string filePath,
         int lineNumber, string potentialFix, string fileHash,
-        bool isUnityMagic = false, bool isReflectionTarget = false)
+        bool isUnityMagic = false, bool isReflectionTarget = false, string? relatedEntities = null)
     {
         return new GameCodeFinding(
             Id: 0,
@@ -546,7 +601,7 @@ public class GameCodeAnalyzer
             FilePath: filePath,
             LineNumber: lineNumber,
             PotentialFix: potentialFix,
-            RelatedEntities: null,
+            RelatedEntities: relatedEntities,
             FileHash: fileHash,
             IsUnityMagic: isUnityMagic,
             IsReflectionTarget: isReflectionTarget

@@ -1,0 +1,25 @@
+# 7D2D Mod Ecosystem Analyzer Configuration
+# ==========================================
+# Copy this file to 'config.txt' and edit the paths below.
+# Lines starting with # are comments and are ignored.
+
+# REQUIRED: Path to your 7 Days To Die installation
+# Examples:
+#   GAME_PATH=C:\Steam\steamapps\common\7 Days To Die
+#   GAME_PATH=D:\SteamLibrary\steamapps\common\7 Days To Die
+#   GAME_PATH=C:\Program Files (x86)\Steam\steamapps\common\7 Days To Die
+GAME_PATH=C:\Steam\steamapps\common\7 Days To Die
+
+# OPTIONAL: Path to your Mods folder
+# If not set, defaults to GAME_PATH\Mods
+# Examples:
+#   MODS_PATH=C:\Steam\steamapps\common\7 Days To Die\Mods
+#   MODS_PATH=D:\MyMods
+MODS_PATH=
+
+# OPTIONAL: Path to decompiled game code (from Decompile-7D2D.ps1)
+# Required for Game Code Analysis page
+# If not set, will search common locations automatically
+# Example:
+#   CODEBASE_PATH=C:\Users\Admin\Documents\GIT\GameMods\7D2DMods\7D2DCodebase
+CODEBASE_PATH=

@@ -82,7 +82,8 @@ public static class ReportSiteGenerator
         GeneratePage(siteFolder, "glossary.html", () => GlossaryPageGenerator.Generate(reportData, extendedData));
         
         // Generate game code page (always generate, will show "no data" message if empty)
-        GeneratePage(siteFolder, "gamecode.html", () => GameCodePageGenerator.Generate(db));
+        // Pass codebase path for source context extraction during enrichment
+        GeneratePage(siteFolder, "gamecode.html", () => GameCodePageGenerator.Generate(db, gameCodebasePath));
 
         return siteFolder;
     }

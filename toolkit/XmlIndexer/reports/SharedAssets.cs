@@ -357,15 +357,17 @@ a.card-clickable, a.card-clickable:hover,
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
 .severity-tab {
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.8rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
   transition: all 0.15s;
 }
@@ -381,8 +383,9 @@ a.card-clickable, a.card-clickable:hover,
 }
 
 .severity-tab .count {
-  margin-left: 0.5rem;
-  opacity: 0.7;
+  margin-left: 0.25rem;
+  font-size: 10px;
+  opacity: 0.8;
 }
 
 /* Expanders/Accordions */
@@ -895,6 +898,7 @@ function toggleShowMore(btn, containerId, allItems, renderFn) {
             ("conflicts.html", "Conflicts"),
             ("dependencies.html", "Dependencies"),
             ("csharp.html", "C# Analysis"),
+            ("gamecode.html", "Game Code"),
             ("glossary.html", "Glossary")
         };
 
