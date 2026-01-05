@@ -575,6 +575,56 @@ summary:hover {
   color: var(--text);
 }
 
+/* Load more button for lazy loading */
+.load-more-btn {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover {
+  background: var(--card);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.load-more-container {
+  border-top: 1px dashed var(--border);
+  margin-top: 1rem;
+}
+
+/* Finding type groups */
+.finding-type-group > summary {
+  list-style: none;
+  user-select: none;
+}
+
+.finding-type-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.finding-type-group > summary::before {
+  content: '▶';
+  margin-right: 0.5rem;
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.finding-type-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+/* Findings summary bar */
+.findings-summary {
+  font-size: 13px;
+}
+
 /* Glossary styles */
 .glossary-category {
   margin-bottom: 1.5rem;

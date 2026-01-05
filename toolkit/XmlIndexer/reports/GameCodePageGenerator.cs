@@ -195,6 +195,12 @@ function filterGameCode() {{
   renderFindings(filtered);
 }}
 
+// Throttled rendering state
+let renderQueue = [];
+let isRendering = false;
+const RENDER_BATCH_SIZE = 30;  // Render 30 items at a time
+const RENDER_DELAY = 16;       // ~60fps
+
 function renderFindings(findings) {{
   const container = document.getElementById('gamecode-results');
 
@@ -209,8 +215,6 @@ function renderFindings(findings) {{
     if (!byType[f.type]) byType[f.type] = [];
     byType[f.type].push(f);
   }});
-
-  let html = '';
 
   // Type order and labels - sorted by importance, then alphabetical for unlisted types
   const typeOrder = [
@@ -246,32 +250,95 @@ function renderFindings(findings) {{
   const remainingTypes = allTypes.filter(t => !typeOrder.includes(t)).sort();
   const renderTypes = [...orderedTypes, ...remainingTypes];
 
+  // Build structure with lazy-load placeholders for large groups
+  let html = '';
+  html += '<div class=""findings-summary"" style=""margin-bottom:1rem;padding:0.75rem;background:var(--bg-secondary);border-radius:4px;"">';
+  html += '<span style=""font-size:13px;"">Showing <strong>' + findings.length + '</strong> findings across <strong>' + renderTypes.length + '</strong> categories</span>';
+  html += '</div>';
+
   renderTypes.forEach(type => {{
     if (!byType[type] || byType[type].length === 0) return;
 
     const info = typeLabels[type] || {{ label: type, desc: '' }};
     const items = byType[type];
+    const shouldStartOpen = items.length <= 20;
+    const typeId = 'type-' + type.replace(/[^a-zA-Z0-9]/g, '_');
 
-    html += '<details' + (items.length <= 20 ? ' open' : '') + '>';
-    html += '<summary>';
-    html += '<span style=""flex: 1;"">' + info.label + '</span>';
-    html += '<span class=""text-dim"" style=""font-size: 12px;"">' + items.length + ' findings</span>';
+    html += '<details id=""' + typeId + '"" class=""finding-type-group""' + (shouldStartOpen ? ' open' : '') + '>';
+    html += '<summary style=""padding:0.75rem;cursor:pointer;background:var(--bg-secondary);border-radius:4px;margin-bottom:0.5rem;display:flex;align-items:center;"">';
+    html += '<span style=""flex:1;font-weight:600;"">' + escapeHtml(info.label) + '</span>';
+    html += '<span class=""text-dim"" style=""font-size:12px;margin-right:0.5rem;"">' + items.length + ' findings</span>';
     html += '</summary>';
-    html += '<div class=""details-body"">';
-    html += '<p class=""text-muted"" style=""margin-bottom: 1rem;"">' + info.desc + '</p>';
-
-    // Render ALL items - no artificial limit
-    items.forEach((f, idx) => {{
-      html += renderFinding(f, idx);
-    }});
+    html += '<div class=""details-body finding-container"" data-type=""' + escapeAttr(type) + '"" data-total=""' + items.length + '"" data-rendered=""0"">';
+    html += '<p class=""text-muted"" style=""margin-bottom:1rem;font-size:12px;"">' + escapeHtml(info.desc) + '</p>';
+    
+    // Render first batch immediately, rest lazily
+    const initialCount = Math.min(items.length, RENDER_BATCH_SIZE);
+    for (let i = 0; i < initialCount; i++) {{
+      html += renderFinding(items[i], i, type);
+    }}
+    
+    // Add load-more button if there are more items
+    if (items.length > RENDER_BATCH_SIZE) {{
+      html += '<div class=""load-more-container"" data-remaining=""' + (items.length - RENDER_BATCH_SIZE) + '"" style=""text-align:center;padding:1rem;"">';
+      html += '<button class=""load-more-btn"" onclick=""loadMoreFindings(this, \'' + escapeAttr(type) + '\')"">';
+      html += 'Load ' + Math.min(RENDER_BATCH_SIZE, items.length - RENDER_BATCH_SIZE) + ' more';
+      html += ' <span class=""text-dim"">(' + (items.length - RENDER_BATCH_SIZE) + ' remaining)</span></button>';
+      html += '</div>';
+    }}
 
     html += '</div></details>';
   }});
 
   container.innerHTML = html;
+  
+  // Store findings by type for lazy loading
+  window._findingsByType = byType;
 }}
 
-function renderFinding(f, idx) {{
+// Lazy load more findings when button is clicked
+function loadMoreFindings(btn, type) {{
+  const container = btn.closest('.finding-container');
+  const byType = window._findingsByType;
+  if (!byType || !byType[type]) return;
+  
+  const items = byType[type];
+  const rendered = parseInt(container.dataset.rendered || '0', 10) + RENDER_BATCH_SIZE;
+  const nextBatch = items.slice(rendered, rendered + RENDER_BATCH_SIZE);
+  
+  if (nextBatch.length === 0) return;
+  
+  // Render the next batch
+  let html = '';
+  nextBatch.forEach((f, i) => {{
+    html += renderFinding(f, rendered + i, type);
+  }});
+  
+  // Insert before the load-more button
+  const loadMoreContainer = container.querySelector('.load-more-container');
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  while (temp.firstChild) {{
+    container.insertBefore(temp.firstChild, loadMoreContainer);
+  }}
+  
+  // Update counter
+  container.dataset.rendered = rendered + nextBatch.length;
+  
+  // Update or remove button
+  const remaining = items.length - (rendered + nextBatch.length);
+  if (remaining <= 0) {{
+    loadMoreContainer.remove();
+  }} else {{
+    loadMoreContainer.dataset.remaining = remaining;
+    btn.innerHTML = 'Load ' + Math.min(RENDER_BATCH_SIZE, remaining) + ' more <span class=""text-dim"">(' + remaining + ' remaining)</span>';
+  }}
+}}
+
+function renderFinding(f, idx, typeContext) {{
+  // === CONTEXT BREADCRUMB (depth trace indicator) ===
+  const breadcrumb = [typeContext || f.type, f.className, f.methodName].filter(Boolean);
+  
   // === SEVERITY STYLING (prominent, used for left border and badge) ===
   const severityColors = {{
     'BUG':         {{ bg: 'rgba(231, 76, 60, 0.15)', border: '#e74c3c', text: '#e74c3c' }},
