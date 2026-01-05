@@ -84,6 +84,18 @@ public static class GameCodePageGenerator
         body.AppendLine(@"  </select>");
         body.AppendLine(@"</div>");
 
+        // Type Browser section
+        var typeBrowserData = GetTypeBrowserData(db);
+        var typeCount = System.Text.RegularExpressions.Regex.Matches(typeBrowserData, @"""id"":").Count;
+        
+        body.AppendLine(@"<details class=""type-browser"" style=""margin: 1rem 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);"">");
+        body.AppendLine($@"  <summary style=""padding: 0.75rem 1rem; cursor: pointer; font-weight: 500;"">📂 Browse All Types ({typeCount:N0} types in codebase)</summary>");
+        body.AppendLine(@"  <div class=""type-browser-content"" style=""padding: 1rem; max-height: 400px; overflow-y: auto;"">");
+        body.AppendLine(@"    <input type=""text"" id=""type-browser-search"" placeholder=""Search types..."" style=""width: 100%; padding: 0.5rem; margin-bottom: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text);"">");
+        body.AppendLine(@"    <div id=""type-browser-tree""></div>");
+        body.AppendLine(@"  </div>");
+        body.AppendLine(@"</details>");
+
         // Call Graph Explorer toggle
         body.AppendLine(@"<div class=""callgraph-toggle"" style=""margin: 1rem 0;"">");
         body.AppendLine(@"  <button id=""open-callgraph-btn"" onclick=""openCallGraphExplorer()"" style=""padding:0.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;font-size:13px;"">");
@@ -123,7 +135,7 @@ public static class GameCodePageGenerator
         var jsonData = SerializeFindingsToJson(findings);
 
         // Client-side JavaScript
-        var script = GenerateJavaScript(jsonData);
+        var script = GenerateJavaScript(jsonData, typeBrowserData);
 
         // Add Cytoscape.js CDN
         var extraHead = @"<script src=""https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js""></script>";
@@ -131,11 +143,12 @@ public static class GameCodePageGenerator
         return SharedAssets.WrapPage("Game Code Analysis", "gamecode.html", body.ToString(), script, extraHead);
     }
 
-    private static string GenerateJavaScript(string jsonData)
+    private static string GenerateJavaScript(string jsonData, string typeBrowserJson)
     {
         return $@"
 // Inline JSON - simple, works offline
 const FINDINGS_DATA = {jsonData};
+const TYPE_BROWSER_DATA = {typeBrowserJson};
 
 let currentSeverity = '';
 
@@ -1054,6 +1067,132 @@ function updateGraphInfo() {{
   info.innerHTML = '<span>Showing <strong>' + nodeCount + '</strong> methods and <strong>' + edgeCount + '</strong> call relationships</span>' +
     '<br><span style=""font-size:11px;color:#95a5a6;"">Click a node to see details. Double-click to expand its connections.</span>';
 }}
+
+// === TYPE BROWSER ===
+function initTypeBrowser() {{
+  const container = document.getElementById('type-browser-tree');
+  if (!container || !TYPE_BROWSER_DATA || TYPE_BROWSER_DATA.length === 0) {{
+    if (container) container.innerHTML = '<p class=""text-muted"">No type data available. Run call graph extraction first.</p>';
+    return;
+  }}
+  
+  renderTypeBrowser(TYPE_BROWSER_DATA);
+  
+  // Search handler
+  const searchInput = document.getElementById('type-browser-search');
+  if (searchInput) {{
+    searchInput.addEventListener('input', function(e) {{
+      const query = e.target.value.toLowerCase().trim();
+      filterTypeBrowser(query);
+    }});
+  }}
+}}
+
+function renderTypeBrowser(data) {{
+  const container = document.getElementById('type-browser-tree');
+  let html = '';
+  
+  data.forEach((ns, idx) => {{
+    const nsId = 'ns-' + idx;
+    const hasFindings = ns.findingCount > 0;
+    const badge = hasFindings ? '<span style=""color:var(--accent);font-size:11px;margin-left:0.5rem;"">(' + ns.findingCount + ' findings)</span>' : '';
+    
+    html += '<details class=""namespace-node"" style=""margin-bottom:0.5rem;"">';
+    html += '<summary style=""cursor:pointer;padding:0.3rem;border-radius:3px;""' + (hasFindings ? ' onclick=""return true;""' : '') + '>';
+    html += '<span style=""color:var(--accent-secondary);font-size:12px;"">📁</span> ';
+    html += '<span class=""ns-name"">' + escapeHtml(ns.namespace) + '</span>';
+    html += ' <span class=""text-dim"" style=""font-size:11px;"">(' + ns.typeCount + ' types)</span>';
+    html += badge;
+    html += '</summary>';
+    html += '<div class=""namespace-types"" style=""margin-left:1.5rem;"">';
+    
+    ns.types.forEach(t => {{
+      const kindIcon = t.kind === 'interface' ? '🔷' : t.kind === 'enum' ? '📊' : t.kind === 'struct' ? '📦' : '📄';
+      const findingBadge = t.findingCount > 0 
+        ? '<span style=""background:var(--accent);color:white;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:0.5rem;"">' + t.findingCount + '</span>'
+        : '';
+      const baseInfo = t.baseType ? '<span class=""text-dim"" style=""font-size:10px;""> : ' + escapeHtml(t.baseType) + '</span>' : '';
+      
+      html += '<div class=""type-node"" style=""padding:0.2rem 0;font-size:12px;cursor:pointer;"" ';
+      html += 'data-type-name=""' + escapeAttr(t.fullName) + '"" ';
+      html += 'onclick=""filterByType(\'' + escapeAttr(t.fullName) + '\')"">';
+      html += kindIcon + ' <span class=""type-name"">' + escapeHtml(t.name) + '</span>';
+      html += baseInfo;
+      html += findingBadge;
+      html += '</div>';
+    }});
+    
+    if (ns.typeCount > 100) {{
+      html += '<div class=""text-dim"" style=""font-size:11px;padding:0.3rem;"">' + (ns.typeCount - 100) + ' more types not shown...</div>';
+    }}
+    
+    html += '</div></details>';
+  }});
+  
+  container.innerHTML = html;
+}}
+
+function filterTypeBrowser(query) {{
+  const container = document.getElementById('type-browser-tree');
+  if (!query) {{
+    // Reset - show all
+    container.querySelectorAll('.namespace-node').forEach(n => n.style.display = '');
+    container.querySelectorAll('.type-node').forEach(n => n.style.display = '');
+    container.querySelectorAll('.namespace-node').forEach(n => n.removeAttribute('open'));
+    return;
+  }}
+  
+  // Filter types
+  let matchCount = 0;
+  container.querySelectorAll('.namespace-node').forEach(nsNode => {{
+    let hasMatch = false;
+    const nsName = nsNode.querySelector('.ns-name')?.textContent?.toLowerCase() || '';
+    
+    if (nsName.includes(query)) {{
+      hasMatch = true;
+    }}
+    
+    nsNode.querySelectorAll('.type-node').forEach(typeNode => {{
+      const typeName = typeNode.querySelector('.type-name')?.textContent?.toLowerCase() || '';
+      const fullName = typeNode.dataset.typeName?.toLowerCase() || '';
+      
+      if (typeName.includes(query) || fullName.includes(query)) {{
+        typeNode.style.display = '';
+        hasMatch = true;
+        matchCount++;
+      }} else {{
+        typeNode.style.display = 'none';
+      }}
+    }});
+    
+    if (hasMatch) {{
+      nsNode.style.display = '';
+      nsNode.setAttribute('open', '');
+    }} else {{
+      nsNode.style.display = 'none';
+    }}
+  }});
+}}
+
+function filterByType(fullTypeName) {{
+  // Set the search box to filter by class name
+  const searchInput = document.getElementById('gamecode-search');
+  if (searchInput) {{
+    // Extract just the class name from full type name
+    const className = fullTypeName.split('.').pop() || fullTypeName;
+    searchInput.value = className;
+    filterGameCode();
+    
+    // Scroll to results
+    const results = document.getElementById('gamecode-results');
+    if (results) results.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+  }}
+}}
+
+// Initialize type browser when page loads
+document.addEventListener('DOMContentLoaded', function() {{
+  initTypeBrowser();
+}});
 ";
     }
 
@@ -1231,4 +1370,91 @@ function updateGraphInfo() {{
         string? Callees,       // Methods this method calls (from cg_calls)
         string? TypeHierarchy  // Base classes and interfaces (from cg_types/cg_implements)
     );
+
+    /// <summary>
+    /// Gets all types from cg_types for the type browser, grouped by namespace.
+    /// </summary>
+    private static string GetTypeBrowserData(SqliteConnection db)
+    {
+        // Check if cg_types table exists
+        using var checkCmd = db.CreateCommand();
+        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='cg_types'";
+        if (checkCmd.ExecuteScalar() == null)
+        {
+            return "[]";
+        }
+
+        var namespaceTypes = new Dictionary<string, List<(int id, string name, string fullName, string kind, string? baseType, int findingCount)>>();
+        
+        // Query types with finding counts (using game_code_analysis table)
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            SELECT 
+                t.id,
+                t.name,
+                t.namespace,
+                t.full_name,
+                t.kind,
+                t.base_type,
+                COALESCE((SELECT COUNT(*) FROM game_code_analysis f WHERE f.class_name = t.full_name OR f.class_name = t.name), 0) as finding_count
+            FROM cg_types t
+            ORDER BY t.namespace, t.name";
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var ns = reader.IsDBNull(2) ? "<global>" : reader.GetString(2);
+            if (ns == "<global namespace>") ns = "<global>";
+            
+            if (!namespaceTypes.ContainsKey(ns))
+                namespaceTypes[ns] = new List<(int, string, string, string, string?, int)>();
+            
+            namespaceTypes[ns].Add((
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.GetInt32(6)
+            ));
+        }
+
+        // Build JSON
+        var sb = new StringBuilder();
+        sb.Append("[");
+        var first = true;
+        foreach (var (ns, types) in namespaceTypes.OrderBy(kv => kv.Key == "<global>" ? "zzz" : kv.Key))
+        {
+            if (!first) sb.Append(",");
+            first = false;
+            
+            sb.Append("{");
+            sb.Append($"\"namespace\":{JsonSerializer.Serialize(ns)},");
+            sb.Append($"\"typeCount\":{types.Count},");
+            sb.Append($"\"findingCount\":{types.Sum(t => t.findingCount)},");
+            sb.Append("\"types\":[");
+            
+            var firstType = true;
+            foreach (var t in types.Take(100)) // Limit per namespace for performance
+            {
+                if (!firstType) sb.Append(",");
+                firstType = false;
+                
+                sb.Append("{");
+                sb.Append($"\"id\":{t.id},");
+                sb.Append($"\"name\":{JsonSerializer.Serialize(t.name)},");
+                sb.Append($"\"fullName\":{JsonSerializer.Serialize(t.fullName)},");
+                sb.Append($"\"kind\":{JsonSerializer.Serialize(t.kind)},");
+                sb.Append($"\"baseType\":{(t.baseType != null ? JsonSerializer.Serialize(t.baseType) : "null")},");
+                sb.Append($"\"findingCount\":{t.findingCount}");
+                sb.Append("}");
+            }
+            
+            sb.Append("]");
+            sb.Append("}");
+        }
+        sb.Append("]");
+        
+        return sb.ToString();
+    }
 }
