@@ -276,6 +276,24 @@ function renderMods(mods) {{
             </div>
           </details>
         ` : ''}}
+
+        ${{m.xmlInfo && (m.xmlInfo.displayName || m.xmlInfo.description || m.xmlInfo.author || m.xmlInfo.version || m.xmlInfo.website) ? `
+          <details style=""margin-top: 1rem;"">
+            <summary>ModInfo.xml</summary>
+            <div class=""details-body"">
+              <p class=""text-muted"" style=""font-size: 11px; margin-bottom: 0.75rem;"">Parsed from ModInfo.xml. Only these fields are extracted — see the mod folder for the complete file.</p>
+              <table class=""data-table"" style=""font-size: 12px;"">
+                <tbody>
+                  ${{m.xmlInfo.displayName ? `<tr><td style=""width: 100px;""><strong>Name</strong></td><td>${{escapeHtml(m.xmlInfo.displayName)}}</td></tr>` : ''}}
+                  ${{m.xmlInfo.author ? `<tr><td><strong>Author</strong></td><td>${{escapeHtml(m.xmlInfo.author)}}</td></tr>` : ''}}
+                  ${{m.xmlInfo.version ? `<tr><td><strong>Version</strong></td><td>${{escapeHtml(m.xmlInfo.version)}}</td></tr>` : ''}}
+                  ${{m.xmlInfo.website ? `<tr><td><strong>Website</strong></td><td><a href=""${{m.xmlInfo.website}}"" target=""_blank"" rel=""noopener"">${{escapeHtml(m.xmlInfo.website)}}</a></td></tr>` : ''}}
+                  ${{m.xmlInfo.description ? `<tr><td><strong>Description</strong></td><td style=""white-space: pre-wrap;"">${{escapeHtml(m.xmlInfo.description)}}</td></tr>` : ''}}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        ` : ''}}
       </div>
     </details>
   `).join('');
@@ -331,7 +349,16 @@ function linkifyXPath(xpath) {{
   const ops = Object.keys(XPATH_LINKS).sort((a, b) => b.length - a.length);
   for (const op of ops) {{
     if (linked.has(op)) continue;
-    const escaped = op.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    // IMPORTANT: Regex escaping for special characters in JavaScript
+    // This C# string produces JS: /[.*+?^${{}}()|\[\]\\]/g
+    // The escaping layers are:
+    //   C# {{}} -> JS {{}}    (interpolation escape)
+    //   C# \\[ -> JS \[     (escaped bracket in char class)
+    //   C# \\] -> JS \]     (escaped bracket in char class)  
+    //   C# \\\\ -> JS \\   (escaped backslash)
+    // In JS regex char class, [ and ] MUST be escaped as \[ \]
+    // DO NOT use POSIX trick of putting ] first - JS doesn't support it
+    const escaped = op.replace(/[.*+?^${{}}()|\[\]\\]/g, '\\$&');
     const pattern = new RegExp('(' + escaped + ')', 'g');
     if (pattern.test(html)) {{
       const url = XPATH_LINKS[op];
@@ -372,7 +399,8 @@ function linkifyXPathInline(xpath) {{
   const linked = new Set();
   for (const op of ops) {{
     if (linked.has(op)) continue;
-    const escaped = op.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    // See linkifyXPath() for detailed escaping explanation
+    const escaped = op.replace(/[.*+?^${{}}()|\[\]\\]/g, '\\$&');
     const pattern = new RegExp('(' + escaped + ')', 'g');
     if (pattern.test(html)) {{
       const url = XPATH_LINKS[op];
