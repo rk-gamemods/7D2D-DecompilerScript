@@ -247,6 +247,7 @@ public class ModAnalyzer
 
     /// <summary>
     /// Persist mod analysis to database for report generation.
+    /// Uses hash-based caching to skip unchanged mods.
     /// </summary>
     public void PersistModAnalysis(string modsFolder, SqliteConnection db)
     {
@@ -255,9 +256,49 @@ public class ModAnalyzer
             .OrderBy(d => Path.GetFileName(d)) // 7D2D loads mods alphabetically
             .ToList();
 
-        Console.WriteLine($"Persisting analysis for {modDirs.Count} mods...");
+        // Get stored mod hashes for incremental processing
+        var storedHashes = DatabaseBuilder.GetStoredHashes(db, "mod_folder");
+        
+        // Compute current hashes and determine what changed
+        var currentHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var modHashMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); // modDir -> hash
+        foreach (var modDir in modDirs)
+        {
+            var modName = Path.GetFileName(modDir);
+            // Hash all XML and DLL files in the mod folder
+            var xmlHash = Utils.ContentHasher.HashFolder(Path.Combine(modDir, "Config"), "*.xml");
+            var dllHash = Utils.ContentHasher.HashFolder(modDir, "*.dll");
+            var combinedHash = Utils.ContentHasher.HashString(xmlHash + dllHash);
+            currentHashes[modName] = combinedHash;
+            modHashMap[modDir] = combinedHash;
+        }
+        
+        var (changed, unchanged, newMods, deleted) = DatabaseBuilder.CompareHashes(storedHashes, currentHashes);
+        var toProcess = changed.Concat(newMods).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        
+        int skipped = unchanged.Count;
+        int processed = 0;
+        
+        Console.WriteLine($"Persisting analysis for {modDirs.Count} mods ({skipped} cached, {toProcess.Count} to analyze)...");
 
         using var transaction = db.BeginTransaction();
+
+        // Clean up deleted mods
+        foreach (var deletedMod in deleted)
+        {
+            using var delCmd = db.CreateCommand();
+            delCmd.CommandText = "SELECT id FROM mods WHERE name = $name";
+            delCmd.Parameters.AddWithValue("$name", deletedMod);
+            var delId = delCmd.ExecuteScalar() as long?;
+            if (delId != null)
+            {
+                DatabaseBuilder.DeleteModDataById(db, delId.Value);
+                using var rmCmd = db.CreateCommand();
+                rmCmd.CommandText = "DELETE FROM mods WHERE id = $id";
+                rmCmd.Parameters.AddWithValue("$id", delId.Value);
+                rmCmd.ExecuteNonQuery();
+            }
+        }
 
         int loadOrder = 0;
         foreach (var modDir in modDirs)
@@ -275,13 +316,25 @@ public class ModAnalyzer
             // Read ModInfo.xml
             var modInfo = ReadModInfo(modDir);
 
-            // Check if mod already exists and delete its old data first
+            // Check if mod already exists
             long? existingModId = null;
             using (var checkCmd = db.CreateCommand())
             {
                 checkCmd.CommandText = "SELECT id FROM mods WHERE name = $name";
                 checkCmd.Parameters.AddWithValue("$name", modName);
                 existingModId = checkCmd.ExecuteScalar() as long?;
+            }
+            
+            // Skip unchanged mods (but always update load_order in case it changed)
+            if (!toProcess.Contains(modName) && existingModId != null)
+            {
+                // Just update load order for cached mods
+                using var updateCmd = db.CreateCommand();
+                updateCmd.CommandText = "UPDATE mods SET load_order = $loadOrder WHERE id = $id";
+                updateCmd.Parameters.AddWithValue("$loadOrder", loadOrder);
+                updateCmd.Parameters.AddWithValue("$id", existingModId.Value);
+                updateCmd.ExecuteNonQuery();
+                continue; // Skip full re-analysis
             }
 
             if (existingModId != null)
@@ -389,9 +442,30 @@ public class ModAnalyzer
 
             var status = conflicts > 0 ? "⚠" : cautions > 0 ? "⚡" : "✓";
             Console.WriteLine($"  {status} {modName}: {xmlOps} XML ops, {deps.Count} C# deps");
+            
+            // Store hash for this mod so we can skip it next time
+            if (modHashMap.TryGetValue(modDir, out var modHash))
+            {
+                DatabaseBuilder.UpsertFileHash(db, modName, modHash, "mod_folder");
+            }
+            processed++;
+        }
+
+        // Clean up hashes for deleted mods
+        foreach (var deletedMod in deleted)
+        {
+            using var delHashCmd = db.CreateCommand();
+            delHashCmd.CommandText = "DELETE FROM file_hashes WHERE file_path = $path AND file_type = 'mod_folder'";
+            delHashCmd.Parameters.AddWithValue("$path", deletedMod);
+            delHashCmd.ExecuteNonQuery();
         }
 
         transaction.Commit();
+        
+        if (skipped > 0)
+        {
+            Console.WriteLine($"  ✓ {skipped} mods unchanged (cached), {processed} mods analyzed");
+        }
     }
 
     // ==========================================================================

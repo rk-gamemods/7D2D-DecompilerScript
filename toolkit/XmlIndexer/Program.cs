@@ -1468,13 +1468,24 @@ public class Program
         Console.WriteLine($"    • {hybridMods} hybrid (XML + C#) mods");
         timings["2. Mod Discovery"] = step2Sw.ElapsedMilliseconds;
 
-        // STEP 3: Decompile mod DLLs
+        // STEP 3: Decompile mod DLLs (with persistent caching)
         Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         Console.WriteLine("STEP 3: Decompiling mod DLLs (using ilspycmd)");
         Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
         var step3Sw = Stopwatch.StartNew();
         int dllsDecompiled = 0;
+        int dllsCached = 0;
+        
+        // Get stored DLL hashes for caching
+        Dictionary<string, string> storedDllHashes;
+        using (var db = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            db.Open();
+            storedDllHashes = Database.DatabaseBuilder.GetStoredHashes(db, "mod_dll");
+        }
+        var dllHashesToStore = new List<(string Path, string Hash, string Type)>();
+        
         foreach (var modDir in modDirs)
         {
             var modName = Path.GetFileName(modDir);
@@ -1487,15 +1498,38 @@ public class Program
 
             foreach (var dll in dlls)
             {
+                // Check if DLL has changed
+                var dllKey = $"{modName}:{Path.GetFileName(dll)}";
+                var currentHash = Utils.ContentHasher.HashFile(dll);
+                
+                if (storedDllHashes.TryGetValue(dllKey, out var storedHash) && storedHash == currentHash)
+                {
+                    dllsCached++;
+                    continue; // Skip - DLL unchanged
+                }
+                
                 var files = CSharpAnalyzer.DecompileModDll(dll, modName);
                 if (files.Count > 0)
                 {
                     dllsDecompiled++;
                     Console.WriteLine($"  ✓ {modName}: {Path.GetFileName(dll)} ({files.Count} files)");
+                    dllHashesToStore.Add((dllKey, currentHash, "mod_dll"));
                 }
             }
         }
-        Console.WriteLine($"\n  Decompiled {dllsDecompiled} mod DLLs");
+        
+        // Store DLL hashes
+        if (dllHashesToStore.Count > 0)
+        {
+            using var db = new SqliteConnection($"Data Source={_dbPath}");
+            db.Open();
+            Database.DatabaseBuilder.BulkUpsertFileHashes(db, dllHashesToStore);
+        }
+        
+        if (dllsCached > 0)
+            Console.WriteLine($"\n  Decompiled {dllsDecompiled} mod DLLs ({dllsCached} cached)");
+        else
+            Console.WriteLine($"\n  Decompiled {dllsDecompiled} mod DLLs");
         timings["3. DLL Decompilation"] = step3Sw.ElapsedMilliseconds;
 
         // STEP 4: Analyze mod conflicts
