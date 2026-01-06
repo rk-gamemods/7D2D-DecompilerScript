@@ -17,7 +17,7 @@ public class CodeTokenizer
         "abstract", "async", "await", "class", "const", "delegate", "enum",
         "event", "interface", "internal", "namespace", "new", "override",
         "partial", "private", "protected", "public", "readonly", "sealed",
-        "static", "struct", "virtual", "volatile", "yield", "return", "throw",
+        "static", "struct", "virtual", "volatile", "void", "yield", "return", "throw",
         "if", "else", "for", "foreach", "while", "do", "switch", "case",
         "try", "catch", "finally", "using", "lock", "ref", "out", "in"
     };
