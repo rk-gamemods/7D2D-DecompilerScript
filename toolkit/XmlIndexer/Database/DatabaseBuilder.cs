@@ -111,6 +111,26 @@ public static class DatabaseBuilder
                 UNIQUE(keyword, category)
             );
             CREATE INDEX IF NOT EXISTS idx_keywords_category ON important_keywords(category);
+            
+            -- Store cached enrichment data to avoid recomputing on each report
+            CREATE TABLE IF NOT EXISTS game_code_enrichment (
+                id INTEGER PRIMARY KEY,
+                analysis_id INTEGER UNIQUE NOT NULL,
+                entity_name TEXT,
+                xml_status TEXT,
+                xml_file TEXT,
+                fuzzy_matches TEXT,
+                dead_code_analysis TEXT,
+                semantic_context TEXT,
+                reachability TEXT,
+                source_context TEXT,
+                usage_level TEXT,
+                callees TEXT,
+                type_hierarchy TEXT,
+                computed_at TEXT NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES game_code_analysis(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_enrichment_analysis ON game_code_enrichment(analysis_id);
         ";
         cmd.ExecuteNonQuery();
         
@@ -1675,4 +1695,115 @@ public static class DatabaseBuilder
         );
         CREATE INDEX IF NOT EXISTS idx_keywords_category ON important_keywords(category);
     ";
+
+    // ============================================================================
+    // ENRICHMENT CACHING (for game code page generation)
+    // ============================================================================
+
+    /// <summary>
+    /// Gets cached enrichment data for an analysis record.
+    /// Returns null if no cached data exists.
+    /// </summary>
+    public static EnrichmentData? GetCachedEnrichment(SqliteConnection db, long analysisId)
+    {
+        try
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = @"
+                SELECT entity_name, xml_status, xml_file, fuzzy_matches, dead_code_analysis,
+                       semantic_context, reachability, source_context, usage_level, callees, type_hierarchy
+                FROM game_code_enrichment
+                WHERE analysis_id = $id";
+            cmd.Parameters.AddWithValue("$id", analysisId);
+
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                return new EnrichmentData
+                {
+                    EntityName = reader.IsDBNull(0) ? null : reader.GetString(0),
+                    XmlStatus = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    XmlFile = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    FuzzyMatches = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    DeadCodeAnalysis = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    SemanticContext = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Reachability = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    SourceContext = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    UsageLevel = reader.IsDBNull(8) ? null : reader.GetString(8),
+                    Callees = reader.IsDBNull(9) ? null : reader.GetString(9),
+                    TypeHierarchy = reader.IsDBNull(10) ? null : reader.GetString(10)
+                };
+            }
+            return null;
+        }
+        catch
+        {
+            return null; // Table might not exist yet
+        }
+    }
+
+    /// <summary>
+    /// Stores enrichment data for an analysis record.
+    /// </summary>
+    public static void CacheEnrichment(SqliteConnection db, long analysisId, EnrichmentData data)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR REPLACE INTO game_code_enrichment 
+            (analysis_id, entity_name, xml_status, xml_file, fuzzy_matches, dead_code_analysis,
+             semantic_context, reachability, source_context, usage_level, callees, type_hierarchy, computed_at)
+            VALUES ($id, $entity, $status, $file, $fuzzy, $dead, $semantic, $reach, $source, $usage, $callees, $hierarchy, datetime('now'))";
+        
+        cmd.Parameters.AddWithValue("$id", analysisId);
+        cmd.Parameters.AddWithValue("$entity", (object?)data.EntityName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$status", (object?)data.XmlStatus ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$file", (object?)data.XmlFile ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$fuzzy", (object?)data.FuzzyMatches ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$dead", (object?)data.DeadCodeAnalysis ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$semantic", (object?)data.SemanticContext ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$reach", (object?)data.Reachability ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$source", (object?)data.SourceContext ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$usage", (object?)data.UsageLevel ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$callees", (object?)data.Callees ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$hierarchy", (object?)data.TypeHierarchy ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Gets the count of cached enrichments.
+    /// </summary>
+    public static int GetEnrichmentCacheCount(SqliteConnection db)
+    {
+        try
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM game_code_enrichment";
+            return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Bulk inserts enrichment data using a transaction for performance.
+    /// </summary>
+    public static void BulkCacheEnrichments(SqliteConnection db, IEnumerable<(long AnalysisId, EnrichmentData Data)> items)
+    {
+        using var transaction = db.BeginTransaction();
+        try
+        {
+            foreach (var (analysisId, data) in items)
+            {
+                CacheEnrichment(db, analysisId, data);
+            }
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
 }

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using XmlIndexer.Analysis;
+using XmlIndexer.Database;
 using XmlIndexer.Models;
 
 namespace XmlIndexer.Reports;
@@ -1490,6 +1491,10 @@ function filterByMethod(methodName, className) {{
     private static List<FindingData> GetAllFindings(SqliteConnection db)
     {
         var findings = new List<FindingData>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        // Check how many cached enrichments we have
+        var cachedCount = DatabaseBuilder.GetEnrichmentCacheCount(db);
 
         // Create enricher for adding context to findings
         EntityEnricher? enricher = null;
@@ -1497,6 +1502,11 @@ function filterByMethod(methodName, className) {{
         {
             enricher = new EntityEnricher(db, _codebasePath);
         }
+
+        // Track enrichments to cache
+        var newEnrichments = new List<(long AnalysisId, EnrichmentData Data)>();
+        var enrichedFromCache = 0;
+        var enrichedFresh = 0;
 
         using var cmd = db.CreateCommand();
         // LEFT JOIN with code_relevance to get scores, fallback to 0 if not computed yet
@@ -1554,8 +1564,28 @@ function filterByMethod(methodName, className) {{
             string? callees = null;
             string? typeHierarchy = null;
 
-            if (enricher != null)
+            // Try to get cached enrichment first
+            var cachedEnrichment = DatabaseBuilder.GetCachedEnrichment(db, analysisId);
+            
+            if (cachedEnrichment != null)
             {
+                // Use cached data
+                entityName = cachedEnrichment.EntityName;
+                xmlStatus = cachedEnrichment.XmlStatus;
+                xmlFile = cachedEnrichment.XmlFile;
+                fuzzyMatches = cachedEnrichment.FuzzyMatches;
+                deadCodeAnalysis = cachedEnrichment.DeadCodeAnalysis;
+                semanticContext = cachedEnrichment.SemanticContext;
+                reachability = cachedEnrichment.Reachability;
+                sourceContext = cachedEnrichment.SourceContext;
+                usageLevel = cachedEnrichment.UsageLevel;
+                callees = cachedEnrichment.Callees;
+                typeHierarchy = cachedEnrichment.TypeHierarchy;
+                enrichedFromCache++;
+            }
+            else if (enricher != null)
+            {
+                // Compute enrichment (not cached)
                 var enrichment = enricher.Enrich(
                     analysisType,
                     className,
@@ -1576,6 +1606,23 @@ function filterByMethod(methodName, className) {{
                 usageLevel = enrichment.UsageLevel;
                 callees = enrichment.Callees;
                 typeHierarchy = enrichment.TypeHierarchy;
+                enrichedFresh++;
+
+                // Queue for caching
+                newEnrichments.Add((analysisId, new EnrichmentData
+                {
+                    EntityName = entityName,
+                    XmlStatus = xmlStatus,
+                    XmlFile = xmlFile,
+                    FuzzyMatches = fuzzyMatches,
+                    DeadCodeAnalysis = deadCodeAnalysis,
+                    SemanticContext = semanticContext,
+                    Reachability = reachability,
+                    SourceContext = sourceContext,
+                    UsageLevel = usageLevel,
+                    Callees = callees,
+                    TypeHierarchy = typeHierarchy
+                }));
             }
 
             findings.Add(new FindingData(
@@ -1609,6 +1656,19 @@ function filterByMethod(methodName, className) {{
                 KeywordScore: keywordScore,
                 ArtifactPenalty: artifactPenalty
             ));
+        }
+
+        // Cache any new enrichments
+        if (newEnrichments.Count > 0)
+        {
+            DatabaseBuilder.BulkCacheEnrichments(db, newEnrichments);
+        }
+
+        sw.Stop();
+        var totalEnriched = enrichedFromCache + enrichedFresh;
+        if (totalEnriched > 0)
+        {
+            Console.WriteLine($"  ✓ Enriched {totalEnriched:N0} findings ({enrichedFromCache:N0} cached, {enrichedFresh:N0} fresh) [{sw.ElapsedMilliseconds}ms]");
         }
 
         return findings;

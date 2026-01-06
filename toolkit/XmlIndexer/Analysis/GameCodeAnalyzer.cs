@@ -37,8 +37,9 @@ public class GameCodeAnalyzer
     {
         try
         {
+            // Load hashes from file_hashes table (tracks ALL analyzed files, not just those with findings)
             using var cmd = _db.CreateCommand();
-            cmd.CommandText = "SELECT DISTINCT file_path, file_hash FROM game_code_analysis WHERE file_hash IS NOT NULL";
+            cmd.CommandText = "SELECT file_path, content_hash FROM file_hashes WHERE file_type = 'game_cs'";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -46,6 +47,17 @@ public class GameCodeAnalyzer
             }
         }
         catch { /* Table may not exist yet */ }
+    }
+    
+    private void SaveFileHash(string filePath, string hash)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR REPLACE INTO file_hashes (file_path, content_hash, last_processed, file_type)
+            VALUES ($path, $hash, datetime('now'), 'game_cs')";
+        cmd.Parameters.AddWithValue("$path", filePath);
+        cmd.Parameters.AddWithValue("$hash", hash);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -134,6 +146,9 @@ public class GameCodeAnalyzer
             }
         }
 
+        // Save hash to file_hashes table so we can skip this file next time
+        // (even if it has no findings)
+        SaveFileHash(filePath, hash);
         _fileHashes[filePath] = hash;
         FilesAnalyzed++;
     }
