@@ -663,12 +663,13 @@ public class ModAnalyzer
         {
             var doc = XDocument.Load(modInfoPath);
             var root = doc.Root;
+            // 7D2D ModInfo.xml uses @value attributes: <DisplayName value="Foo"/>
             return new ModXmlInfo(
-                root?.Element("DisplayName")?.Value ?? root?.Element("Name")?.Attribute("value")?.Value,
-                root?.Element("Description")?.Value ?? root?.Element("Description")?.Attribute("value")?.Value,
-                root?.Element("Author")?.Value ?? root?.Element("Author")?.Attribute("value")?.Value,
-                root?.Element("Version")?.Value ?? root?.Element("Version")?.Attribute("value")?.Value,
-                root?.Element("Website")?.Value ?? root?.Element("Website")?.Attribute("value")?.Value
+                root?.Element("DisplayName")?.Attribute("value")?.Value ?? root?.Element("DisplayName")?.Value ?? root?.Element("Name")?.Attribute("value")?.Value,
+                root?.Element("Description")?.Attribute("value")?.Value ?? root?.Element("Description")?.Value,
+                root?.Element("Author")?.Attribute("value")?.Value ?? root?.Element("Author")?.Value,
+                root?.Element("Version")?.Attribute("value")?.Value ?? root?.Element("Version")?.Value,
+                root?.Element("Website")?.Attribute("value")?.Value ?? root?.Element("Website")?.Value
             );
         }
         catch { return null; }
