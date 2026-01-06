@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title 7D2D Mod Ecosystem Analyzer
 color 0A
 
@@ -8,45 +9,106 @@ echo   7D2D Mod Ecosystem Analyzer
 echo  ========================================
 echo.
 
-:: Default paths (edit these if needed)
-set "GAME_PATH=C:\Steam\steamapps\common\7 Days To Die"
 set "TOOLKIT_DIR=%~dp0toolkit\XmlIndexer"
-set "DB_PATH=%TOOLKIT_DIR%\ecosystem.db"
-set "REPORT_DIR=%TOOLKIT_DIR%\reports"
+set "OUTPUT_DIR=%~dp0output"
+set "CONFIG_FILE=%~dp0config.txt"
 
-:: Check if game path exists
-if not exist "%GAME_PATH%\Data\Config" (
-    echo [!] Default game path not found: %GAME_PATH%
+:: Load config file if it exists
+set "GAME_PATH="
+set "MODS_PATH="
+set "CODEBASE_PATH="
+
+if not exist "%CONFIG_FILE%" (
     echo.
-    set /p "GAME_PATH=Enter your 7 Days To Die install path: "
+    echo  [!] ERROR: config.txt not found!
+    echo.
+    echo  Please create a config.txt file in this folder.
+    echo  Copy config.example.txt to config.txt and edit it.
+    echo.
+    echo  Example config.txt contents:
+    echo  -----------------------------
+    echo  GAME_PATH=C:\Steam\steamapps\common\7 Days To Die
+    echo  MODS_PATH=C:\Steam\steamapps\common\7 Days To Die\Mods
+    echo  -----------------------------
+    echo.
+    echo  Common Steam locations:
+    echo    C:\Steam\steamapps\common\7 Days To Die
+    echo    C:\Program Files ^(x86^)\Steam\steamapps\common\7 Days To Die
+    echo    D:\SteamLibrary\steamapps\common\7 Days To Die
+    echo.
+    pause
+    exit /b 1
 )
 
-:: Ask for mods folder
-echo.
-echo Enter the path to your Mods folder
-echo   Example: C:\Steam\steamapps\common\7 Days To Die\Mods
-echo   Or press ENTER to skip mod analysis
-echo.
-set /p "MODS_PATH=Mods folder path: "
+echo [*] Loading config from config.txt...
+for /f "usebackq tokens=1,* delims==" %%a in ("%CONFIG_FILE%") do (
+    set "key=%%a"
+    set "val=%%b"
+    if /i "!key!"=="GAME_PATH" set "GAME_PATH=!val!"
+    if /i "!key!"=="MODS_PATH" set "MODS_PATH=!val!"
+    if /i "!key!"=="CODEBASE_PATH" set "CODEBASE_PATH=!val!"
+)
+
+:: Validate game path
+if "!GAME_PATH!"=="" (
+    echo.
+    echo  [!] ERROR: GAME_PATH not set in config.txt!
+    echo.
+    echo  Add this line to config.txt:
+    echo  GAME_PATH=C:\Steam\steamapps\common\7 Days To Die
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Check if game path exists
+if not exist "!GAME_PATH!\Data\Config" (
+    echo.
+    echo  [!] ERROR: Game path invalid!
+    echo.
+    echo  Path in config: !GAME_PATH!
+    echo  Could not find Data\Config folder at this location.
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Default mods path if not set
+if "!MODS_PATH!"=="" set "MODS_PATH=!GAME_PATH!\Mods"
 
 echo.
+echo  Configuration:
+echo    Game: !GAME_PATH!
+echo    Mods: !MODS_PATH!
+echo    Output: !OUTPUT_DIR!
+echo.
 echo  ----------------------------------------
-echo   Starting Analysis...
+echo   Running Analysis...
 echo  ----------------------------------------
 echo.
 
 :: Run the analysis from toolkit directory
-cd /d "%TOOLKIT_DIR%"
+cd /d "!TOOLKIT_DIR!"
 
-if "%MODS_PATH%"=="" (
-    echo [*] Running base game analysis only (no mods)...
-    dotnet run -- build "%GAME_PATH%" "%DB_PATH%"
-) else (
-    echo [*] Running full analysis with mods...
-    dotnet run -- full-analyze "%GAME_PATH%" "%MODS_PATH%" "%DB_PATH%"
+:: Ensure Release build exists (faster than dotnet run)
+if not exist "bin\Release\net8.0\XmlIndexer.exe" (
+    echo  [*] Building toolkit ^(first run only^)...
+    dotnet build -c Release -v q --nologo
+    if !ERRORLEVEL! NEQ 0 (
+        echo  [X] Build failed!
+        pause
+        exit /b 1
+    )
 )
 
-if %ERRORLEVEL% NEQ 0 (
+:: Build command with optional codebase path
+:: Use compiled binary for faster startup and caching
+set "CMD=bin\Release\net8.0\XmlIndexer.exe report "!GAME_PATH!" "!MODS_PATH!" "!OUTPUT_DIR!" --open"
+if not "!CODEBASE_PATH!"=="" set "CMD=!CMD! --codebase "!CODEBASE_PATH!""
+
+!CMD!
+
+if !ERRORLEVEL! NEQ 0 (
     echo.
     echo [X] Analysis failed! Check errors above.
     pause
@@ -54,20 +116,9 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo  ----------------------------------------
-echo   Generating HTML Report...
-echo  ----------------------------------------
-echo.
-
-dotnet run -- report "%DB_PATH%" "%REPORT_DIR%" --html
-
-echo.
 echo  ========================================
 echo   Analysis Complete!
 echo  ========================================
 echo.
-echo  Database: %DB_PATH%
-echo  Reports:  %REPORT_DIR%
-echo.
 
-pause
+endlocal

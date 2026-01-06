@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameCodePage UI Tests</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+        .test { padding: 1rem; margin: 1rem 0; border: 1px solid #ddd; border-radius: 4px; }
+        .test.pass { border-color: #27ae60; background: #d4edda; }
+        .test.fail { border-color: #e74c3c; background: #f8d7da; }
+        .test.pending { border-color: #95a5a6; background: #f0f0f0; }
+        .test-title { font-weight: bold; margin-bottom: 0.5rem; }
+        .test-desc { color: #666; font-size: 14px; margin-bottom: 0.5rem; }
+        .test-result { font-family: monospace; font-size: 13px; }
+        .summary { padding: 1rem; margin: 2rem 0; font-size: 18px; font-weight: bold; }
+        .summary.pass { background: #d4edda; color: #155724; }
+        .summary.fail { background: #f8d7da; color: #721c24; }
+        
+        /* Test element styles */
+        .js-click { cursor: pointer; color: #3498db; }
+        .js-click:hover { text-decoration: underline; }
+        #test-output { padding: 1rem; background: #f5f5f5; margin-top: 1rem; font-family: monospace; min-height: 100px; }
+        
+        /* Sample finding card for visual inspection */
+        .finding-card { border-left: 3px solid #e74c3c; padding: 1rem; background: #2d2d2d; border-radius: 4px; margin: 1rem 0; color: #eee; }
+    </style>
+</head>
+<body>
+    <h1>GameCodePage UI Tests</h1>
+    <p>These tests verify that the data-attribute click handling works correctly.</p>
+    
+    <div id="test-results"></div>
+    <div id="test-output"><strong>Click Output:</strong><br>(Click test elements to see output here)</div>
+    
+    <h2>Interactive Test Elements</h2>
+    <p>Click each element to verify the click handler works:</p>
+    
+    <div id="interactive-tests">
+        <!-- These simulate the generated links from GameCodePageGenerator -->
+    </div>
+    
+    <script>
+    // ============================================================================
+    // Test Framework
+    // ============================================================================
+    const tests = [];
+    let clickLog = [];
+    
+    function test(name, description, fn) {
+        tests.push({ name, description, fn, status: 'pending', error: null });
+    }
+    
+    async function runTests() {
+        const resultsDiv = document.getElementById('test-results');
+        resultsDiv.innerHTML = '<h2>Running Tests...</h2>';
+        
+        let passed = 0, failed = 0;
+        
+        for (const t of tests) {
+            try {
+                await t.fn();
+                t.status = 'pass';
+                passed++;
+            } catch (e) {
+                t.status = 'fail';
+                t.error = e.message;
+                failed++;
+            }
+        }
+        
+        // Render results
+        let html = '';
+        for (const t of tests) {
+            html += `<div class="test ${t.status}">
+                <div class="test-title">${t.name}</div>
+                <div class="test-desc">${t.description}</div>
+                <div class="test-result">${t.status === 'fail' ? '❌ ' + t.error : '✓ Passed'}</div>
+            </div>`;
+        }
+        
+        const summaryClass = failed === 0 ? 'pass' : 'fail';
+        html += `<div class="summary ${summaryClass}">
+            ${failed === 0 ? '✓ ALL TESTS PASSED' : '❌ SOME TESTS FAILED'} 
+            (${passed}/${tests.length} passed)
+        </div>`;
+        
+        resultsDiv.innerHTML = html;
+    }
+    
+    function assertEquals(expected, actual, message) {
+        if (expected !== actual) {
+            throw new Error(`${message || 'Assertion failed'}: expected "${expected}", got "${actual}"`);
+        }
+    }
+    
+    function assertTrue(condition, message) {
+        if (!condition) {
+            throw new Error(message || 'Expected true but got false');
+        }
+    }
+    
+    // ============================================================================
+    // Mock Functions (simulating the actual page functions)
+    // ============================================================================
+    function filterByClass(className) {
+        clickLog.push({ action: 'filterByClass', args: [className] });
+        updateOutput(`filterByClass called with: "${className}"`);
+    }
+    
+    function filterByClassMethod(className, methodName) {
+        clickLog.push({ action: 'filterByClassMethod', args: [className, methodName] });
+        updateOutput(`filterByClassMethod called with: "${className}", "${methodName}"`);
+    }
+    
+    function updateOutput(message) {
+        document.getElementById('test-output').innerHTML = '<strong>Click Output:</strong><br>' + message;
+    }
+    
+    // ============================================================================
+    // Helper Functions (same as in GameCodePageGenerator)
+    // ============================================================================
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function escapeAttr(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/'/g, '&#39;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+    
+    // ============================================================================
+    // Event Delegation (same as in GameCodePageGenerator)
+    // ============================================================================
+    document.addEventListener('click', function(e) {
+        const el = e.target.closest('.js-click');
+        if (!el) return;
+        
+        e.preventDefault();
+        const action = el.dataset.action;
+        
+        const args = [];
+        let i = 0;
+        while (el.dataset['arg' + i] !== undefined) {
+            args.push(el.dataset['arg' + i]);
+            i++;
+        }
+        
+        if (typeof window[action] === 'function') {
+            window[action].apply(null, args);
+        } else {
+            console.error('Unknown action:', action);
+        }
+    });
+    
+    // ============================================================================
+    // Test Cases
+    // ============================================================================
+    
+    // Test 1: Basic escapeAttr function
+    test('escapeAttr handles quotes', 'Single and double quotes should be encoded', () => {
+        assertEquals('&#39;', escapeAttr("'"), 'Single quote encoding');
+        assertEquals('&quot;', escapeAttr('"'), 'Double quote encoding');
+    });
+    
+    // Test 2: escapeAttr handles special characters
+    test('escapeAttr handles HTML special chars', 'Angle brackets and ampersands should be encoded', () => {
+        assertEquals('&lt;', escapeAttr('<'), 'Less than');
+        assertEquals('&gt;', escapeAttr('>'), 'Greater than');
+        assertEquals('&amp;', escapeAttr('&'), 'Ampersand');
+    });
+    
+    // Test 3: escapeAttr handles complex strings
+    test('escapeAttr handles complex input', 'Class names with special characters', () => {
+        const input = "TestClass<T>'s\"Value";
+        const output = escapeAttr(input);
+        assertTrue(output.includes('&lt;'), 'Should encode <');
+        assertTrue(output.includes('&gt;'), 'Should encode >');
+        assertTrue(output.includes('&#39;'), 'Should encode single quote');
+        assertTrue(output.includes('&quot;'), 'Should encode double quote');
+    });
+    
+    // Test 4: Empty and null handling
+    test('escapeAttr handles empty/null', 'Empty strings and undefined', () => {
+        assertEquals('', escapeAttr(''), 'Empty string');
+        assertEquals('', escapeAttr(null), 'Null');
+        assertEquals('', escapeAttr(undefined), 'Undefined');
+    });
+    
+    // Test 5: Data attribute parsing
+    test('Data attributes are accessible', 'Browser correctly parses data-* attributes', () => {
+        const el = document.createElement('a');
+        el.dataset.action = 'testAction';
+        el.dataset.arg0 = 'first';
+        el.dataset.arg1 = 'second';
+        
+        assertEquals('testAction', el.dataset.action);
+        assertEquals('first', el.dataset.arg0);
+        assertEquals('second', el.dataset.arg1);
+    });
+    
+    // Test 6: Data attributes with special characters survive round-trip
+    test('Special chars in data attributes', 'Encoded characters decode correctly', () => {
+        const el = document.createElement('a');
+        // Set innerHTML to test the actual encoding path
+        const className = "Entity'Manager<T>";
+        el.outerHTML = `<a data-arg0="${escapeAttr(className)}">Test</a>`;
+        
+        // Create element from HTML string (simulates what browser does)
+        const div = document.createElement('div');
+        div.innerHTML = `<a href="#" data-arg0="${escapeAttr(className)}">Test</a>`;
+        const link = div.querySelector('a');
+        
+        assertEquals(className, link.dataset.arg0, 'Special chars should decode correctly');
+    });
+    
+    // Test 7: Simulated click test with single argument
+    test('Click handler works (1 arg)', 'filterByClass receives correct argument', async () => {
+        clickLog = [];
+        const className = "ItemActionEntryHarvest";
+        
+        const div = document.createElement('div');
+        div.innerHTML = `<a href="#" class="js-click" data-action="filterByClass" data-arg0="${escapeAttr(className)}">Click me</a>`;
+        document.body.appendChild(div);
+        
+        const link = div.querySelector('a');
+        link.click();
+        
+        await new Promise(r => setTimeout(r, 10)); // Wait for event
+        
+        document.body.removeChild(div);
+        
+        assertTrue(clickLog.length === 1, 'Should have one click logged');
+        assertEquals('filterByClass', clickLog[0].action, 'Action should be filterByClass');
+        assertEquals(className, clickLog[0].args[0], 'Argument should match');
+    });
+    
+    // Test 8: Simulated click test with two arguments
+    test('Click handler works (2 args)', 'filterByClassMethod receives both arguments', async () => {
+        clickLog = [];
+        const className = "EntityAlive";
+        const methodName = "OnEntityDeath";
+        
+        const div = document.createElement('div');
+        div.innerHTML = `<a href="#" class="js-click" data-action="filterByClassMethod" 
+            data-arg0="${escapeAttr(className)}" 
+            data-arg1="${escapeAttr(methodName)}">Click me</a>`;
+        document.body.appendChild(div);
+        
+        const link = div.querySelector('a');
+        link.click();
+        
+        await new Promise(r => setTimeout(r, 10));
+        
+        document.body.removeChild(div);
+        
+        assertTrue(clickLog.length === 1, 'Should have one click logged');
+        assertEquals('filterByClassMethod', clickLog[0].action);
+        assertEquals(className, clickLog[0].args[0], 'First arg should be className');
+        assertEquals(methodName, clickLog[0].args[1], 'Second arg should be methodName');
+    });
+    
+    // Test 9: Click with problematic class name (apostrophe)
+    test('Click with apostrophe in name', 'Names with apostrophes work', async () => {
+        clickLog = [];
+        const className = "O'Brien";  // Edge case: apostrophe in name
+        
+        const div = document.createElement('div');
+        div.innerHTML = `<a href="#" class="js-click" data-action="filterByClass" data-arg0="${escapeAttr(className)}">Click</a>`;
+        document.body.appendChild(div);
+        
+        div.querySelector('a').click();
+        await new Promise(r => setTimeout(r, 10));
+        
+        document.body.removeChild(div);
+        
+        assertEquals(className, clickLog[0].args[0], "Apostrophe should be preserved");
+    });
+    
+    // Test 10: Click with generic type syntax
+    test('Click with generic types', 'Names with <> work', async () => {
+        clickLog = [];
+        const className = "List<Dictionary<string, int>>";
+        
+        const div = document.createElement('div');
+        div.innerHTML = `<a href="#" class="js-click" data-action="filterByClass" data-arg0="${escapeAttr(className)}">Click</a>`;
+        document.body.appendChild(div);
+        
+        div.querySelector('a').click();
+        await new Promise(r => setTimeout(r, 10));
+        
+        document.body.removeChild(div);
+        
+        assertEquals(className, clickLog[0].args[0], "Generic syntax should be preserved");
+    });
+    
+    // ============================================================================
+    // Generate Interactive Test Elements
+    // ============================================================================
+    function generateInteractiveTests() {
+        const container = document.getElementById('interactive-tests');
+        
+        // Test cases with problematic names
+        const testCases = [
+            { className: "ItemActionEntryHarvest", methodName: "OnActivateItem", label: "Normal names" },
+            { className: "EntityPlayer", methodName: "OnDeath", label: "Simple names" },
+            { className: "O'Brien", methodName: "Test's Method", label: "Apostrophes" },
+            { className: 'Test"Class', methodName: 'Method"Name', label: "Double quotes" },
+            { className: "List<T>", methodName: "Add<TItem>", label: "Generic types" },
+            { className: "A & B", methodName: "M & N", label: "Ampersands" },
+            { className: "Item<Dictionary<string, object>>", methodName: "Process<T>", label: "Nested generics" },
+            { className: "Test\nNewline", methodName: "Method\tTab", label: "Whitespace chars" },
+        ];
+        
+        let html = '<div class="finding-card">';
+        html += '<h3 style="color: #3498db; margin-top: 0;">Interactive Click Tests</h3>';
+        html += '<p style="color: #95a5a6;">Click each link to verify it works. Check the output box above.</p>';
+        
+        testCases.forEach(tc => {
+            html += `<div style="margin: 0.5rem 0; padding: 0.5rem; background: rgba(255,255,255,0.05); border-radius: 4px;">`;
+            html += `<strong>${escapeHtml(tc.label)}:</strong> `;
+            html += `<a href="#" class="js-click" data-action="filterByClass" data-arg0="${escapeAttr(tc.className)}" 
+                style="color:#3498db;">[Class: ${escapeHtml(tc.className)}]</a> `;
+            html += `<a href="#" class="js-click" data-action="filterByClassMethod" 
+                data-arg0="${escapeAttr(tc.className)}" data-arg1="${escapeAttr(tc.methodName)}"
+                style="color:#27ae60;">[Method: ${escapeHtml(tc.className)}.${escapeHtml(tc.methodName)}]</a>`;
+            html += '</div>';
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // ============================================================================
+    // Run on page load
+    // ============================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+        generateInteractiveTests();
+        await runTests();
+    });
+    </script>
+</body>
+</html>

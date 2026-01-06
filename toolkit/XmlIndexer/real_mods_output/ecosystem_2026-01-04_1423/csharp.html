@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="obsidian">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C# Analysis - 7D2D Ecosystem</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<nav class="site-nav">
+  <div class="nav-brand">7D2D Ecosystem</div>
+  <a href="index.html" class="nav-item">Dashboard</a>
+  <a href="entities.html" class="nav-item">Entities</a>
+  <a href="mods.html" class="nav-item">Mods</a>
+  <a href="conflicts.html" class="nav-item">Conflicts</a>
+  <a href="dependencies.html" class="nav-item">Dependencies</a>
+  <a href="csharp.html" class="nav-item active">C# Analysis</a>
+  <a href="glossary.html" class="nav-item">Glossary</a>
+  <select class="theme-select" onchange="setTheme(this.value)">
+    <option value="obsidian">Obsidian</option>
+    <option value="graphite">Graphite</option>
+  </select>
+</nav>
+
+<div class="page-container">
+<div class="page-header">
+  <h1>C# Analysis</h1>
+  <p>Harmony patches, class extensions, and C# mod dependencies</p>
+</div>
+<div class="stats-bar">
+<div class="stat"><span class="stat-value">0</span><span class="stat-label">Harmony Patches</span></div>
+<div class="stat"><span class="stat-value">7</span><span class="stat-label">Class Extensions</span></div>
+<div class="stat"><span class="stat-value">5</span><span class="stat-label">C# Mods</span></div>
+<div class="stat"><span class="stat-value">66</span><span class="stat-label">Total Dependencies</span></div>
+</div>
+<div class="card" style="margin-bottom: 1.5rem;">
+<h3 style="margin-bottom: 1rem;">Dependency Types</h3>
+<div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+<div style="padding: 0.5rem;">
+<div style="font-size: 1.1rem; font-weight: 600; color: var(--accent);">39</div>
+<div class="text-muted" style="font-size: 12px;">Harmony: Postfix Patch</div>
+</div>
+<div style="padding: 0.5rem;">
+<div style="font-size: 1.1rem; font-weight: 600; color: var(--accent);">12</div>
+<div class="text-muted" style="font-size: 12px;">Harmony: Prefix Patch</div>
+</div>
+<div style="padding: 0.5rem;">
+<div style="font-size: 1.1rem; font-weight: 600; color: var(--accent);">7</div>
+<div class="text-muted" style="font-size: 12px;">Harmony: Transpiler</div>
+</div>
+<div style="padding: 0.5rem;">
+<div style="font-size: 1.1rem; font-weight: 600; color: var(--accent);">7</div>
+<div class="text-muted" style="font-size: 12px;">Implements IModApi</div>
+</div>
+<div style="padding: 0.5rem;">
+<div style="font-size: 1.1rem; font-weight: 600; color: var(--accent);">1</div>
+<div class="text-muted" style="font-size: 12px;">Item Lookup</div>
+</div>
+</div>
+</div>
+<div class="filter-bar">
+  <input type="text" class="filter-search" id="csharp-search" placeholder="Search classes, methods, or mods..." oninput="filterCSharp()">
+</div>
+<div style="margin-bottom: 2rem;">
+<h2 style="margin-bottom: 1rem;">🔧 Harmony Patches</h2>
+<p class="text-muted" style="margin-bottom: 1rem;">Mods that hook into game code using Harmony library.</p>
+<p class="text-muted">No Harmony patches detected.</p>
+</div>
+<div style="margin-bottom: 2rem;">
+<h2 style="margin-bottom: 1rem;">📦 Class Extensions</h2>
+<p class="text-muted" style="margin-bottom: 1rem;">Mods that extend game classes (ItemAction, Block, Entity, etc.).</p>
+<div id="class-extensions">
+<details>
+<summary>
+<span class="tag tag-type">imodapi</span>
+<span style="flex: 1; margin-left: 0.5rem;">7 extensions</span>
+</summary>
+<div class="details-body">
+<table class="data-table">
+<thead><tr><th>Mod</th><th>Class</th></tr></thead>
+<tbody>
+<tr>
+<td><a href="mods.html?search=0_TFP_Harmony">0_TFP_Harmony</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=ProxiCraft">ProxiCraft</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=QuickStack">QuickStack</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=SpawnSleepersInRange">SpawnSleepersInRange</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=SpawnSleepersInRange">SpawnSleepersInRange</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=SpawnSleepersInRange">SpawnSleepersInRange</a></td>
+<td><code>IModApi</code></td>
+</tr>
+<tr>
+<td><a href="mods.html?search=UnlockOpenDoors">UnlockOpenDoors</a></td>
+<td><code>IModApi</code></td>
+</tr>
+</tbody></table>
+</div></details>
+</div>
+</div>
+<div style="margin-bottom: 2rem;">
+<h2 style="margin-bottom: 1rem;">C# Mods Overview</h2>
+</div>
+
+</div>
+<script>
+
+// Fuzzy search scoring - matches characters in order, not necessarily adjacent
+function fuzzyScore(query, target) {
+  if (!query) return 1;
+  query = query.toLowerCase();
+  target = target.toLowerCase();
+  let qi = 0, score = 0, lastMatch = -1;
+  for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+    if (target[ti] === query[qi]) {
+      score += (ti === lastMatch + 1) ? 2 : 1; // Bonus for consecutive
+      lastMatch = ti;
+      qi++;
+    }
+  }
+  return qi === query.length ? score : 0;
+}
+
+// Generic search helper
+function searchItems(query, items, getSearchText) {
+  if (!query) return items.slice(0, 20);
+  return items
+    .map(item => ({ item, score: fuzzyScore(query, getSearchText(item)) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.item);
+}
+
+// Theme persistence
+function initTheme() {
+  const saved = localStorage.getItem('7d2d-theme') || 'obsidian';
+  document.documentElement.dataset.theme = saved;
+  const select = document.querySelector('.theme-select');
+  if (select) select.value = saved;
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('7d2d-theme', theme);
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', initTheme);
+
+// Debounce helper for search
+function debounce(fn, delay) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// Show/hide more items
+function toggleShowMore(btn, containerId, allItems, renderFn) {
+  const container = document.getElementById(containerId);
+  const showAll = btn.dataset.expanded !== 'true';
+
+  if (showAll) {
+    container.innerHTML = allItems.map(renderFn).join('');
+    btn.textContent = 'Show Less';
+    btn.dataset.expanded = 'true';
+  } else {
+    container.innerHTML = allItems.slice(0, 20).map(renderFn).join('');
+    btn.textContent = `Show All (${allItems.length})`;
+    btn.dataset.expanded = 'false';
+  }
+}
+
+
+function filterCSharp() {
+  const query = document.getElementById('csharp-search').value.toLowerCase();
+
+  // Filter harmony patches
+  document.querySelectorAll('#harmony-patches details').forEach(detail => {
+    const text = detail.textContent.toLowerCase();
+    detail.style.display = text.includes(query) ? '' : 'none';
+  });
+
+  // Filter class extensions
+  document.querySelectorAll('#class-extensions details').forEach(detail => {
+    const text = detail.textContent.toLowerCase();
+    detail.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+
+</script>
+</body>
+</html>

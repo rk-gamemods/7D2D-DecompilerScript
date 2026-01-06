@@ -547,3 +547,156 @@ CREATE TABLE IF NOT EXISTS method_summaries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_method_summaries_method ON method_summaries(method_id);
+
+-- ============================================================================
+-- TRANSITIVE REFERENCES: Pre-computed entity dependency chains
+-- ============================================================================
+-- Purpose: Store every A→B relationship including indirect ones
+-- so we don't have to recompute chains every time we ask "what depends on X?"
+--
+-- Example: gunPistolT3 → extends → gunPistolT2 → extends → gunPistolT1
+-- Stored as 3 rows:
+--   gunPistolT3 → gunPistolT2 (depth 1)
+--   gunPistolT3 → gunPistolT1 (depth 2, through gunPistolT2)
+--   gunPistolT3 → gunPistolMaster (depth 3, through T2 and T1)
+
+CREATE TABLE IF NOT EXISTS transitive_references (
+    id INTEGER PRIMARY KEY,
+    source_def_id INTEGER NOT NULL,     -- The entity that depends on something
+    target_def_id INTEGER NOT NULL,     -- The entity being depended on
+    path_depth INTEGER NOT NULL,        -- How many hops (1 = direct, 2+ = indirect)
+    path_json TEXT NOT NULL,            -- Full chain as JSON: ["extends:gunPistolT2", "extends:gunPistolT1"]
+    reference_types TEXT,               -- Unique ref types in path: "extends,triggered_effect"
+    UNIQUE(source_def_id, target_def_id),
+    FOREIGN KEY (source_def_id) REFERENCES xml_definitions(id),
+    FOREIGN KEY (target_def_id) REFERENCES xml_definitions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transitive_source ON transitive_references(source_def_id);
+CREATE INDEX IF NOT EXISTS idx_transitive_target ON transitive_references(target_def_id);
+CREATE INDEX IF NOT EXISTS idx_transitive_depth ON transitive_references(path_depth);
+
+-- ============================================================================
+-- MOD INDIRECT CONFLICTS: Stored conflict analysis results
+-- ============================================================================
+-- Purpose: Store detected indirect mod interactions with severity classification
+-- so we don't re-analyze every time we ask "do these mods conflict?"
+--
+-- Severity framing (preserve for tooltips):
+-- "Most overlaps are informational, not problems. 
+--  Severity indicates how much attention something deserves, not that something is wrong."
+--
+-- LOW = "Here's an interaction you might want to know about"
+-- MEDIUM = "Impactful gameplay change, worth verifying this is what you want"
+-- HIGH = "Will likely cause errors or broken functionality"
+
+CREATE TABLE IF NOT EXISTS mod_indirect_conflicts (
+    id INTEGER PRIMARY KEY,
+    mod1_id INTEGER NOT NULL,
+    mod2_id INTEGER NOT NULL,
+    shared_entity_id INTEGER NOT NULL,  -- The entity both mods affect (directly or indirectly)
+    mod1_entity_id INTEGER,             -- What mod1 directly touches
+    mod2_entity_id INTEGER,             -- What mod2 directly touches
+    mod1_operation TEXT,                -- 'set', 'append', 'remove', etc.
+    mod2_operation TEXT,
+    mod1_path_json TEXT,                -- How mod1 reaches shared entity
+    mod2_path_json TEXT,                -- How mod2 reaches shared entity
+    severity TEXT NOT NULL,             -- 'low', 'medium', 'high'
+    pattern_id TEXT NOT NULL,           -- 'L1', 'M2', 'H5', etc.
+    pattern_name TEXT,                  -- Human readable: 'Additive stacking', 'Deleted entity referenced'
+    explanation TEXT,                   -- Auto-generated description of the interaction
+    FOREIGN KEY (mod1_id) REFERENCES mods(id),
+    FOREIGN KEY (mod2_id) REFERENCES mods(id),
+    FOREIGN KEY (shared_entity_id) REFERENCES xml_definitions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_indirect_mod1 ON mod_indirect_conflicts(mod1_id);
+CREATE INDEX IF NOT EXISTS idx_indirect_mod2 ON mod_indirect_conflicts(mod2_id);
+CREATE INDEX IF NOT EXISTS idx_indirect_shared ON mod_indirect_conflicts(shared_entity_id);
+CREATE INDEX IF NOT EXISTS idx_indirect_severity ON mod_indirect_conflicts(severity);
+CREATE INDEX IF NOT EXISTS idx_indirect_pattern ON mod_indirect_conflicts(pattern_id);
+
+-- ============================================================================
+-- VIEWS: Convenient query shortcuts for common questions
+-- ============================================================================
+
+-- View: Inheritance hotspots - entities with many dependents
+-- Use: "What are the most dangerous entities to modify?"
+CREATE VIEW IF NOT EXISTS v_inheritance_hotspots AS
+SELECT 
+    d.name as base_entity,
+    d.definition_type,
+    COUNT(*) as dependent_count,
+    CASE 
+        WHEN COUNT(*) > 100 THEN 'CRITICAL'
+        WHEN COUNT(*) > 50 THEN 'HIGH'
+        WHEN COUNT(*) > 20 THEN 'MEDIUM'
+        ELSE 'LOW'
+    END as risk_level
+FROM transitive_references tr
+JOIN xml_definitions d ON tr.target_def_id = d.id
+GROUP BY tr.target_def_id
+ORDER BY dependent_count DESC;
+
+-- View: Entity type counts (replaces hardcoded markdown tables)
+-- Use: "How many items, blocks, buffs, etc. exist?"
+CREATE VIEW IF NOT EXISTS v_entity_counts AS
+SELECT definition_type, COUNT(*) as count
+FROM xml_definitions
+GROUP BY definition_type
+ORDER BY count DESC;
+
+-- View: Reference type distribution
+-- Use: "What kinds of references exist and how many?"
+CREATE VIEW IF NOT EXISTS v_reference_type_counts AS
+SELECT 
+    reference_context,
+    COUNT(*) as count,
+    COUNT(DISTINCT target_name) as unique_targets
+FROM xml_references
+GROUP BY reference_context
+ORDER BY count DESC;
+
+-- View: Most referenced buffs
+-- Use: "Which buffs are most connected to other systems?"
+CREATE VIEW IF NOT EXISTS v_most_referenced_buffs AS
+SELECT 
+    target_name as buff_name,
+    COUNT(*) as reference_count,
+    GROUP_CONCAT(DISTINCT reference_context) as reference_types
+FROM xml_references
+WHERE target_type = 'buff'
+GROUP BY target_name
+ORDER BY reference_count DESC;
+
+-- View: Conflict summary by severity
+-- Use: "Give me an overview of mod interactions"
+CREATE VIEW IF NOT EXISTS v_conflict_summary AS
+SELECT 
+    severity,
+    COUNT(*) as conflict_count,
+    GROUP_CONCAT(DISTINCT pattern_id) as patterns_found
+FROM mod_indirect_conflicts
+GROUP BY severity
+ORDER BY 
+    CASE severity 
+        WHEN 'high' THEN 1 
+        WHEN 'medium' THEN 2 
+        WHEN 'low' THEN 3 
+    END;
+
+-- View: Mod interaction matrix
+-- Use: "Which mod pairs have the most interactions?"
+CREATE VIEW IF NOT EXISTS v_mod_interaction_matrix AS
+SELECT 
+    m1.name as mod1_name,
+    m2.name as mod2_name,
+    COUNT(*) as interaction_count,
+    SUM(CASE WHEN mic.severity = 'high' THEN 1 ELSE 0 END) as high_count,
+    SUM(CASE WHEN mic.severity = 'medium' THEN 1 ELSE 0 END) as medium_count,
+    SUM(CASE WHEN mic.severity = 'low' THEN 1 ELSE 0 END) as low_count
+FROM mod_indirect_conflicts mic
+JOIN mods m1 ON mic.mod1_id = m1.id
+JOIN mods m2 ON mic.mod2_id = m2.id
+GROUP BY mic.mod1_id, mic.mod2_id
+ORDER BY high_count DESC, medium_count DESC, interaction_count DESC;

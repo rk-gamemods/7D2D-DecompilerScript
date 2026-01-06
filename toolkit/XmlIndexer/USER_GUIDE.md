@@ -379,6 +379,90 @@ dotnet run -- report eco.db ./final_reports --html
 
 ---
 
+## Utility Functions
+
+### Content Hashing (Incremental Processing)
+
+The `ContentHasher` utility enables incremental processing by tracking file changes via SHA256 hashes.
+
+```csharp
+using XmlIndexer.Utils;
+
+// Hash a single file
+string hash = ContentHasher.HashFile("path/to/file.xml");
+
+// Hash an entire folder (recursive)
+string folderHash = ContentHasher.HashFolder("path/to/mod");
+
+// Compare hashes to detect changes
+var stored = DatabaseBuilder.GetStoredHashes(db, "xml");
+var current = new Dictionary<string, string> { { "file.xml", ContentHasher.HashFile("file.xml") } };
+var (changed, unchanged, newFiles, deleted) = DatabaseBuilder.CompareHashes(stored, current);
+```
+
+### Run Unit Tests
+
+```powershell
+# Test the ContentHasher utility
+dotnet run -- test-hasher
+
+# Test the JsClickBuilder utility
+dotnet run -- test-jsclick
+
+# Run all tests
+dotnet run -- test-all
+```
+
+### HTML Click Builder
+
+The `JsClickBuilder` utility generates clickable HTML elements using data attributes instead of inline onclick handlers. This eliminates JavaScript string escaping complexity.
+
+**Server-side C# usage:**
+```csharp
+using XmlIndexer.Utils;
+
+// Generate a clickable anchor
+string html = JsClickBuilder.Anchor(
+    "filterByClass",           // JavaScript function name
+    new[] { "EntityAlive" },   // Arguments
+    "Click me",                // Inner HTML
+    "color: blue;"             // Optional style
+);
+// Outputs: <a href="#" class="js-click" data-action="filterByClass" data-arg0="EntityAlive" style="color: blue;">Click me</a>
+```
+
+**Client-side JavaScript (include once per page):**
+```javascript
+// Event delegation for js-click elements
+document.addEventListener('click', function(e) {
+    const el = e.target.closest('.js-click');
+    if (!el) return;
+    
+    e.preventDefault();
+    const action = el.dataset.action;
+    
+    const args = [];
+    let i = 0;
+    while (el.dataset['arg' + i] !== undefined) {
+        args.push(el.dataset['arg' + i]);
+        i++;
+    }
+    
+    if (typeof window[action] === 'function') {
+        window[action].apply(null, args);
+    }
+});
+```
+
+### UI Tests
+
+Open `toolkit/XmlIndexer/Tests/GameCodePageUITests.html` in a browser to run interactive tests for the click handling system. This verifies that:
+- Special characters (quotes, apostrophes, angle brackets) are encoded correctly
+- Data attributes survive the HTML parsing round-trip
+- Click events fire with the correct arguments
+
+---
+
 ## Troubleshooting
 
 ### "Database not found"

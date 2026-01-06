@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using XmlIndexer.Analysis;
 using XmlIndexer.Models;
 
 namespace XmlIndexer.Reports;
@@ -39,6 +40,12 @@ public static class ReportDataCollector
         var topInterconnected = GetTopInterconnected(db);
         var mostInvasiveMods = GetMostInvasiveMods(db);
         var propertyConflicts = GetPropertyConflicts(db);
+        
+        // Dependency chain data (new)
+        var (totalTransitiveRefs, inheritanceHotspots, sampleChains) = GetDependencyChainData(db);
+        
+        // Game code analysis
+        var gameCodeSummary = GameCodeAnalyzer.GetSummary(db);
 
         return new ReportData(
             totalDefs, totalProps, totalRefs, defsByType,
@@ -48,7 +55,10 @@ public static class ReportDataCollector
             longestItem, mostRefItem, mostRefCount, mostComplex, mostComplexProps,
             mostConnected, mostConnectedRefs, mostDepended, mostDependedCount,
             contested, modBehaviors,
-            topInterconnected, mostInvasiveMods, propertyConflicts
+            topInterconnected, mostInvasiveMods, propertyConflicts,
+            totalTransitiveRefs, inheritanceHotspots, sampleChains,
+            gameCodeSummary.BugCount, gameCodeSummary.WarningCount,
+            gameCodeSummary.InfoCount, gameCodeSummary.OpportunityCount
         );
     }
 
@@ -162,28 +172,60 @@ public static class ReportDataCollector
     private static List<ModInfo> GetModSummary(SqliteConnection db)
     {
         var modSummary = new List<ModInfo>();
+        
+        // Get operation details per mod for better health notes
+        var modOpDetails = new Dictionary<string, (int sets, int appends, int removes, int entities)>();
+        using (var detailCmd = db.CreateCommand())
+        {
+            detailCmd.CommandText = @"
+                SELECT m.name,
+                    SUM(CASE WHEN o.operation IN ('set', 'setattribute') THEN 1 ELSE 0 END) as sets,
+                    SUM(CASE WHEN o.operation IN ('append', 'insertBefore', 'insertAfter') THEN 1 ELSE 0 END) as appends,
+                    SUM(CASE WHEN o.operation = 'remove' THEN 1 ELSE 0 END) as removes,
+                    COUNT(DISTINCT o.target_name) as entities
+                FROM mods m
+                LEFT JOIN mod_xml_operations o ON o.mod_id = m.id
+                GROUP BY m.id, m.name";
+            using var r = detailCmd.ExecuteReader();
+            while (r.Read())
+            {
+                var modName = r.GetString(0);
+                modOpDetails[modName] = (
+                    r.IsDBNull(1) ? 0 : r.GetInt32(1),
+                    r.IsDBNull(2) ? 0 : r.GetInt32(2),
+                    r.IsDBNull(3) ? 0 : r.GetInt32(3),
+                    r.IsDBNull(4) ? 0 : r.GetInt32(4)
+                );
+            }
+        }
+        
         using var cmd = db.CreateCommand();
-        cmd.CommandText = @"SELECT m.name, m.xml_operations, m.csharp_dependencies, m.conflicts, m.has_xml, m.has_dll,
+        cmd.CommandText = @"SELECT m.name, m.folder_name, m.load_order, m.xml_operations, m.csharp_dependencies, 
+            m.conflicts, m.has_xml, m.has_dll,
             (SELECT COUNT(*) FROM mod_xml_operations WHERE mod_id = m.id AND operation = 'remove') as removes
-            FROM mods m ORDER BY m.conflicts DESC, m.xml_operations DESC, m.csharp_dependencies DESC";
+            FROM mods m ORDER BY m.load_order ASC";
         
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             var name = reader.GetString(0);
-            var ops = reader.GetInt32(1);
-            var deps = reader.GetInt32(2);
-            var conflicts = reader.GetInt32(3);
-            var hasXml = reader.GetInt32(4) == 1;
-            var hasDll = reader.GetInt32(5) == 1;
-            var removes = reader.GetInt32(6);
+            var folderName = reader.IsDBNull(1) ? name : reader.GetString(1);
+            var loadOrder = reader.GetInt32(2);
+            var ops = reader.GetInt32(3);
+            var deps = reader.GetInt32(4);
+            var conflicts = reader.GetInt32(5);
+            var hasXml = reader.GetInt32(6) == 1;
+            var hasDll = reader.GetInt32(7) == 1;
+            var removes = reader.GetInt32(8);
+            
+            var details = modOpDetails.TryGetValue(name, out var d) ? d : (sets: 0, appends: 0, removes: 0, entities: 0);
             
             string modType = (hasXml, hasDll) switch
             {
                 (true, true) => "Hybrid",
                 (true, false) => "XML",
-                (false, true) => "C# Code",
-                _ => "Assets"
+                (false, true) => "C#",
+                _ => "Config" // No XML operations detected, likely just ModInfo.xml or asset folder
             };
             
             string health, healthNote;
@@ -195,24 +237,37 @@ public static class ReportDataCollector
             else if (removes > 0)
             {
                 health = "Healthy";
-                healthNote = $"Intentionally removes {removes} game element(s)";
+                healthNote = $"Removes {removes} game element(s)";
             }
-            else if (ops > 0 || deps > 0)
+            else if (ops > 0 && deps > 0)
             {
                 health = "Healthy";
-                healthNote = ops > 0 && deps > 0 ? "Modifies game via XML and code" 
-                           : ops > 0 ? "Modifies game via XML" 
-                           : "Modifies game via C# code patches";
+                healthNote = $"Hybrid: {ops} XML ops on {d.entities} entities, {deps} C# patches";
+            }
+            else if (ops > 0)
+            {
+                health = "Healthy";
+                var parts = new List<string>();
+                if (d.sets > 0) parts.Add($"{d.sets} sets");
+                if (d.appends > 0) parts.Add($"{d.appends} appends");
+                healthNote = parts.Count > 0 
+                    ? $"XML: {string.Join(", ", parts)} on {d.entities} entities"
+                    : $"XML: {ops} operations on {d.entities} entities";
+            }
+            else if (deps > 0)
+            {
+                health = "Healthy";
+                healthNote = $"C#: {deps} game code patches";
             }
             else
             {
                 health = "Healthy";
-                healthNote = hasDll ? "C# code mod (no game dependencies detected)" 
-                           : hasXml ? "XML mod (no changes detected)" 
-                           : "Asset-only mod (textures, sounds, etc.)";
+                healthNote = hasDll ? "C# mod (no detected game patches)" 
+                           : hasXml ? "Has Config/ but no operations parsed" 
+                           : "Config only (no XML/DLL detected)";
             }
             
-            modSummary.Add(new ModInfo(name, ops, deps, removes, modType, health, healthNote));
+            modSummary.Add(new ModInfo(name, loadOrder, ops, deps, removes, modType, health, healthNote, folderName));
         }
 
         return modSummary;
@@ -269,62 +324,151 @@ public static class ReportDataCollector
     private static List<ContestedEntity> GetContestedEntities(SqliteConnection db)
     {
         var contested = new List<ContestedEntity>();
-        var candidates = new List<(string type, string name, int count)>();
 
+        // Step 1: Find entities where one mod REMOVES and others still modify (always a conflict)
+        var removeConflicts = new List<(string type, string name)>();
         using (var cmd = db.CreateCommand())
         {
-            cmd.CommandText = @"SELECT target_type, target_name, COUNT(DISTINCT mod_id) as mod_count
-                FROM mod_xml_operations WHERE target_name IS NOT NULL
-                GROUP BY target_type, target_name HAVING mod_count > 1 ORDER BY mod_count DESC";
+            cmd.CommandText = @"
+                SELECT DISTINCT mxo1.target_type, mxo1.target_name
+                FROM mod_xml_operations mxo1
+                WHERE mxo1.operation = 'remove'
+                  AND mxo1.target_name IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM mod_xml_operations mxo2
+                    WHERE mxo2.target_type = mxo1.target_type
+                      AND mxo2.target_name = mxo1.target_name
+                      AND mxo2.mod_id != mxo1.mod_id
+                  )";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                candidates.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
+                removeConflicts.Add((reader.GetString(0), reader.GetString(1)));
         }
 
-        foreach (var (entityType, entityName, _) in candidates)
+        // Step 2: Find REAL property conflicts - multiple mods setting the SAME property/xpath
+        // But exclude cases where all mods set the SAME VALUE (just redundant, not a conflict)
+        var propertyConflicts = new Dictionary<(string type, string name), List<(string propKey, int modCount, bool sameValue)>>();
+        using (var cmd = db.CreateCommand())
         {
-            var modActions = new List<(string, string)>();
+            // Group by entity + property/xpath - check if values differ
+            cmd.CommandText = @"
+                SELECT target_type, target_name, 
+                       COALESCE(property_name, xpath, operation) as prop_key,
+                       COUNT(DISTINCT mod_id) as mod_count,
+                       COUNT(DISTINCT COALESCE(new_value, '')) as distinct_values
+                FROM mod_xml_operations 
+                WHERE target_name IS NOT NULL
+                  AND operation IN ('set', 'setattribute')
+                GROUP BY target_type, target_name, prop_key
+                HAVING mod_count > 1
+                ORDER BY mod_count DESC";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var key = (reader.GetString(0), reader.GetString(1));
+                if (!propertyConflicts.ContainsKey(key))
+                    propertyConflicts[key] = new List<(string, int, bool)>();
+                
+                var distinctValues = reader.GetInt32(4);
+                var sameValue = distinctValues <= 1; // All mods set same value (or null)
+                propertyConflicts[key].Add((reader.GetString(2), reader.GetInt32(3), sameValue));
+            }
+        }
+
+        // Combine the conflict sources
+        var allConflictEntities = new HashSet<(string type, string name)>(removeConflicts);
+        foreach (var key in propertyConflicts.Keys)
+            allConflictEntities.Add(key);
+
+        foreach (var (entityType, entityName) in allConflictEntities)
+        {
+            var modActions = new List<ConflictModAction>();
             using var detailCmd = db.CreateCommand();
-            detailCmd.CommandText = @"SELECT m.name, mxo.operation FROM mod_xml_operations mxo 
+            detailCmd.CommandText = @"SELECT m.name, mxo.operation, mxo.xpath, mxo.property_name,
+                mxo.new_value, mxo.element_content, mxo.file_path, mxo.line_number
+                FROM mod_xml_operations mxo
                 JOIN mods m ON mxo.mod_id = m.id
                 WHERE mxo.target_type = $type AND mxo.target_name = $name ORDER BY mxo.operation";
             detailCmd.Parameters.AddWithValue("$type", entityType);
             detailCmd.Parameters.AddWithValue("$name", entityName);
-            
+
             using var detailReader = detailCmd.ExecuteReader();
             while (detailReader.Read())
-                modActions.Add((detailReader.GetString(0), detailReader.GetString(1)));
+            {
+                modActions.Add(new ConflictModAction(
+                    detailReader.GetString(0),  // ModName
+                    detailReader.GetString(1),  // Operation
+                    detailReader.IsDBNull(2) ? null : detailReader.GetString(2),   // XPath
+                    detailReader.IsDBNull(3) ? null : detailReader.GetString(3),   // PropertyName
+                    detailReader.IsDBNull(4) ? null : detailReader.GetString(4),   // NewValue
+                    detailReader.IsDBNull(5) ? null : detailReader.GetString(5),   // ElementContent
+                    detailReader.IsDBNull(6) ? null : detailReader.GetString(6),   // FilePath
+                    detailReader.IsDBNull(7) ? null : detailReader.GetInt32(7)     // LineNumber
+                ));
+            }
 
-            var operations = modActions.Select(a => a.Item2.ToLower()).ToList();
-            var hasRemove = operations.Any(o => o == "remove");
-            var multipleWriters = operations.Count(o => o == "set" || o == "setattribute") > 1;
+            // Determine risk level based on actual conflict type
+            var hasRemove = modActions.Any(a => a.Operation.ToLower() == "remove");
+            var conflictingProps = propertyConflicts.GetValueOrDefault((entityType, entityName));
 
             string riskLevel, riskReason;
             if (hasRemove && modActions.Count > 1)
             {
                 riskLevel = "High";
-                riskReason = "One mod removes this while others modify it";
+                riskReason = "One mod removes this entity while others modify it";
             }
-            else if (multipleWriters)
+            else if (conflictingProps != null && conflictingProps.Count > 0)
             {
-                riskLevel = "Medium";
-                riskReason = "Multiple mods overwrite the same values (last one wins)";
-            }
-            else if (operations.All(o => o == "append" || o == "insertafter" || o == "insertbefore"))
-            {
-                riskLevel = "None";
-                riskReason = "All mods just add content - fully compatible";
+                // Check if ALL conflicting properties have the same value across mods
+                var realConflicts = conflictingProps.Where(p => !p.sameValue).ToList();
+                var redundantOnly = conflictingProps.Where(p => p.sameValue).ToList();
+
+                if (realConflicts.Count > 0)
+                {
+                    var propList = string.Join(", ", realConflicts.Take(3).Select(p => p.propKey));
+                    riskLevel = "Medium";
+                    riskReason = $"Multiple mods set different values for: {propList}";
+                }
+                else if (redundantOnly.Count > 0)
+                {
+                    // All mods set the same value - just redundant, skip entirely
+                    // Don't add to contested list - it's not a real conflict
+                    continue;
+                }
+                else
+                {
+                    riskLevel = "Low";
+                    riskReason = "Operations may conflict";
+                }
             }
             else
             {
                 riskLevel = "Low";
-                riskReason = "Operations appear compatible";
+                riskReason = "Operations may conflict";
             }
-            
-            contested.Add(new ContestedEntity(entityType, entityName, modActions, riskLevel, riskReason));
+
+            // Only include actions that are part of actual conflicts
+            if (hasRemove)
+            {
+                // For remove conflicts, show all actions
+                contested.Add(new ContestedEntity(entityType, entityName, modActions, riskLevel, riskReason));
+            }
+            else if (conflictingProps != null)
+            {
+                // For property conflicts, filter to only show conflicting properties (not redundant ones)
+                var realConflictKeys = conflictingProps.Where(p => !p.sameValue).Select(p => p.propKey).ToHashSet();
+                var filteredActions = modActions.Where(a =>
+                {
+                    var key = a.PropertyName ?? a.XPath ?? a.Operation;
+                    return realConflictKeys.Contains(key);
+                }).ToList();
+
+                if (filteredActions.Count > 0)
+                    contested.Add(new ContestedEntity(entityType, entityName, filteredActions, riskLevel, riskReason));
+            }
         }
 
-        return contested;
+        return contested.OrderByDescending(c => c.RiskLevel == "High" ? 2 : c.RiskLevel == "Medium" ? 1 : 0).ToList();
     }
 
     private static (Dictionary<string, int> csharpByType, 
@@ -344,25 +488,30 @@ public static class ReportDataCollector
                 csharpByType[reader.GetString(0)] = reader.GetInt32(1);
         }
 
+        // Harmony patches are stored as 'ClassName.MethodName' in dependency_name 
+        // with dependency_type of harmony_prefix, harmony_postfix, or harmony_transpiler
         using (var cmd = db.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT DISTINCT m.name, hc.dependency_name as class_name,
-                    COALESCE(hm.dependency_name, '') as method_name,
-                    CASE 
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_prefix' AND hp.source_file = hc.source_file) THEN 'Prefix'
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_postfix' AND hp.source_file = hc.source_file) THEN 'Postfix'
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_transpiler' AND hp.source_file = hc.source_file) THEN 'Transpiler'
+                SELECT DISTINCT m.name, 
+                    CASE WHEN INSTR(mcd.dependency_name, '.') > 0 
+                        THEN SUBSTR(mcd.dependency_name, 1, INSTR(mcd.dependency_name, '.') - 1)
+                        ELSE mcd.dependency_name 
+                    END as class_name,
+                    CASE WHEN INSTR(mcd.dependency_name, '.') > 0 
+                        THEN SUBSTR(mcd.dependency_name, INSTR(mcd.dependency_name, '.') + 1)
+                        ELSE '' 
+                    END as method_name,
+                    CASE mcd.dependency_type
+                        WHEN 'harmony_prefix' THEN 'Prefix'
+                        WHEN 'harmony_postfix' THEN 'Postfix'
+                        WHEN 'harmony_transpiler' THEN 'Transpiler'
                         ELSE 'Patch'
                     END as patch_type
                 FROM mods m
-                JOIN mod_csharp_deps hc ON hc.mod_id = m.id AND hc.dependency_type = 'harmony_class'
-                LEFT JOIN mod_csharp_deps hm ON hm.mod_id = m.id AND hm.dependency_type = 'harmony_method' 
-                    AND hm.source_file = hc.source_file
-                ORDER BY m.name, hc.dependency_name";
+                JOIN mod_csharp_deps mcd ON mcd.mod_id = m.id 
+                WHERE mcd.dependency_type IN ('harmony_prefix', 'harmony_postfix', 'harmony_transpiler')
+                ORDER BY m.name, class_name, method_name";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 harmonyPatches.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
@@ -434,14 +583,18 @@ public static class ReportDataCollector
     {
         var result = new List<PropertyConflict>();
         using var cmd = db.CreateCommand();
+        // Only return properties where mods set DIFFERENT values (real conflicts)
+        // Exclude same-value redundancies
+        // Include entries even if target_name looks like a selector (fragile xpath)
         cmd.CommandText = @"
             SELECT mxo.target_type, mxo.target_name, mxo.property_name,
                 GROUP_CONCAT(m.name || ':' || COALESCE(mxo.new_value, ''), '|') as setters
             FROM mod_xml_operations mxo JOIN mods m ON mxo.mod_id = m.id
             WHERE mxo.property_name IS NOT NULL AND mxo.property_name != ''
+              AND mxo.target_name IS NOT NULL AND mxo.target_name != ''
               AND mxo.operation IN ('set', 'setattribute')
             GROUP BY mxo.target_type, mxo.target_name, mxo.property_name
-            HAVING COUNT(DISTINCT mxo.mod_id) > 1
+            HAVING COUNT(DISTINCT mxo.mod_id) > 1 AND COUNT(DISTINCT COALESCE(mxo.new_value, '')) > 1
             ORDER BY COUNT(DISTINCT mxo.mod_id) DESC";
         
         using var reader = cmd.ExecuteReader();
@@ -547,4 +700,535 @@ public static class ReportDataCollector
         "skill" or "perk" => "Progression",
         _ => entityType
     };
+
+    /// <summary>
+    /// Get dependency chain data from transitive_references table (if populated).
+    /// </summary>
+    private static (int totalTransitiveRefs, List<InheritanceHotspot> hotspots, List<EntityDependencyInfo> sampleChains) 
+        GetDependencyChainData(SqliteConnection db)
+    {
+        int totalTransitiveRefs = 0;
+        var hotspots = new List<InheritanceHotspot>();
+        var sampleChains = new List<EntityDependencyInfo>();
+
+        // Check if transitive_references table exists
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='transitive_references'";
+            var exists = cmd.ExecuteScalar();
+            if (exists == null)
+                return (0, hotspots, sampleChains);
+        }
+
+        // Get total transitive reference count
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM transitive_references";
+            totalTransitiveRefs = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        if (totalTransitiveRefs == 0)
+            return (0, hotspots, sampleChains);
+
+        // Get inheritance hotspots (most depended-upon entities)
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT 
+                    d.definition_type, 
+                    d.name,
+                    COUNT(DISTINCT tr.source_def_id) as dependent_count,
+                    GROUP_CONCAT(DISTINCT d_dep.name) as dependents
+                FROM transitive_references tr
+                JOIN xml_definitions d ON tr.target_def_id = d.id
+                JOIN xml_definitions d_dep ON tr.source_def_id = d_dep.id
+                GROUP BY tr.target_def_id
+                ORDER BY dependent_count DESC
+                LIMIT 25";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var dependentCount = reader.GetInt32(2);
+                var riskLevel = dependentCount switch
+                {
+                    > 100 => "CRITICAL",
+                    > 50 => "HIGH",
+                    > 20 => "MEDIUM",
+                    _ => "LOW"
+                };
+                var dependents = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                var topDependents = dependents.Split(',').Take(5).ToList();
+                
+                hotspots.Add(new InheritanceHotspot(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    dependentCount,
+                    riskLevel,
+                    topDependents
+                ));
+            }
+        }
+
+        // Get sample dependency chains - include ALL entities with any dependencies/dependents
+        // First priority: entities with most dependents (hotspots already covers this, but we add chains)
+        // Second priority: entities with deep dependency chains
+        // Third priority: entities that just extend something
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT DISTINCT
+                    d.definition_type,
+                    d.name,
+                    d.file_path,
+                    d.extends as extends_from,
+                    COALESCE(
+                        (SELECT COUNT(*) FROM transitive_references tr WHERE tr.source_def_id = d.id),
+                        0
+                    ) as deps_count,
+                    COALESCE(
+                        (SELECT COUNT(*) FROM transitive_references tr WHERE tr.target_def_id = d.id),
+                        0
+                    ) as dependent_count,
+                    COALESCE(
+                        (SELECT MAX(tr.path_depth) FROM transitive_references tr WHERE tr.source_def_id = d.id),
+                        0
+                    ) as max_depth
+                FROM xml_definitions d
+                WHERE EXISTS (
+                    SELECT 1 FROM transitive_references tr 
+                    WHERE tr.source_def_id = d.id OR tr.target_def_id = d.id
+                )
+                ORDER BY 
+                    dependent_count DESC,
+                    max_depth DESC,
+                    deps_count DESC";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var entityType = reader.GetString(0);
+                var entityName = reader.GetString(1);
+                var filePath = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                var extendsFrom = reader.IsDBNull(3) ? null : reader.GetString(3);
+
+                // Get what this entity depends on (with full path chain)
+                var dependsOn = new List<DependencyChainEntry>();
+                using (var depCmd = db.CreateCommand())
+                {
+                    depCmd.CommandText = @"
+                        SELECT d.definition_type, d.name, tr.path_depth, tr.reference_types, d.file_path, tr.path_json
+                        FROM transitive_references tr
+                        JOIN xml_definitions d ON tr.target_def_id = d.id
+                        WHERE tr.source_def_id = (SELECT id FROM xml_definitions WHERE name = @name AND definition_type = @type)
+                        ORDER BY tr.path_depth
+                        LIMIT 20";
+                    depCmd.Parameters.AddWithValue("@name", entityName);
+                    depCmd.Parameters.AddWithValue("@type", entityType);
+                    using var depReader = depCmd.ExecuteReader();
+                    while (depReader.Read())
+                    {
+                        dependsOn.Add(new DependencyChainEntry(
+                            depReader.GetString(0),
+                            depReader.GetString(1),
+                            depReader.GetInt32(2),
+                            depReader.IsDBNull(3) ? "" : depReader.GetString(3),
+                            depReader.IsDBNull(4) ? "" : depReader.GetString(4),
+                            depReader.IsDBNull(5) ? "[]" : depReader.GetString(5)
+                        ));
+                    }
+                }
+
+                // Get what depends on this entity (with full path chain)
+                var dependedOnBy = new List<DependencyChainEntry>();
+                using (var depByCmd = db.CreateCommand())
+                {
+                    depByCmd.CommandText = @"
+                        SELECT d.definition_type, d.name, tr.path_depth, tr.reference_types, d.file_path, tr.path_json
+                        FROM transitive_references tr
+                        JOIN xml_definitions d ON tr.source_def_id = d.id
+                        WHERE tr.target_def_id = (SELECT id FROM xml_definitions WHERE name = @name AND definition_type = @type)
+                        ORDER BY tr.path_depth
+                        LIMIT 20";
+                    depByCmd.Parameters.AddWithValue("@name", entityName);
+                    depByCmd.Parameters.AddWithValue("@type", entityType);
+                    using var depByReader = depByCmd.ExecuteReader();
+                    while (depByReader.Read())
+                    {
+                        dependedOnBy.Add(new DependencyChainEntry(
+                            depByReader.GetString(0),
+                            depByReader.GetString(1),
+                            depByReader.GetInt32(2),
+                            depByReader.IsDBNull(3) ? "" : depByReader.GetString(3),
+                            depByReader.IsDBNull(4) ? "" : depByReader.GetString(4),
+                            depByReader.IsDBNull(5) ? "[]" : depByReader.GetString(5)
+                        ));
+                    }
+                }
+
+                if (dependsOn.Count > 0 || dependedOnBy.Count > 0)
+                {
+                    sampleChains.Add(new EntityDependencyInfo(
+                        entityType,
+                        entityName,
+                        filePath,
+                        extendsFrom,
+                        dependsOn,
+                        dependedOnBy
+                    ));
+                }
+            }
+        }
+
+        return (totalTransitiveRefs, hotspots, sampleChains);
+    }
+
+    // =========================================================================
+    // Extended Data Collection (for multi-page HTML reports)
+    // =========================================================================
+
+    /// <summary>
+    /// Gather extended data for multi-page reports.
+    /// This includes full entity exports, references, and mod details.
+    /// </summary>
+    public static ExtendedReportData GatherExtendedData(SqliteConnection db)
+    {
+        var allEntities = ExportAllEntities(db);
+        var allReferences = ExportAllReferences(db);
+        var allTransitiveRefs = ExportAllTransitiveRefs(db);
+        var modDetails = GetAllModDetails(db);
+        var callGraphNodes = GetCallGraphNodes(db);
+        var eventFlowData = GetEventFlowData(db);
+        var referenceTypeCounts = GetReferenceTypeBreakdown(db);
+
+        return new ExtendedReportData(
+            allEntities,
+            allReferences,
+            allTransitiveRefs,
+            modDetails,
+            callGraphNodes,
+            eventFlowData,
+            referenceTypeCounts
+        );
+    }
+
+    /// <summary>Export all entities with their properties for the entity page.</summary>
+    private static List<EntityExport> ExportAllEntities(SqliteConnection db)
+    {
+        var entities = new List<EntityExport>();
+        var entityProps = new Dictionary<long, List<PropertyExport>>();
+
+        // First get all properties grouped by definition
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT definition_id, property_name, property_value, property_class
+                FROM xml_properties ORDER BY definition_id, line_number";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var defId = reader.GetInt64(0);
+                if (!entityProps.ContainsKey(defId))
+                    entityProps[defId] = new List<PropertyExport>();
+                entityProps[defId].Add(new PropertyExport(
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        // Get reference counts per entity
+        var refCounts = new Dictionary<long, int>();
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT source_def_id, COUNT(*) FROM xml_references
+                WHERE source_def_id IS NOT NULL GROUP BY source_def_id";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                refCounts[reader.GetInt64(0)] = reader.GetInt32(1);
+        }
+
+        // Get all definitions
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT id, definition_type, name, file_path, line_number, extends
+                FROM xml_definitions ORDER BY definition_type, name";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetInt64(0);
+                entityProps.TryGetValue(id, out var props);
+                refCounts.TryGetValue(id, out var refCount);
+
+                entities.Add(new EntityExport(
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    props?.Count ?? 0,
+                    refCount,
+                    props
+                ));
+            }
+        }
+
+        return entities;
+    }
+
+    /// <summary>Export all references for the entity page.</summary>
+    private static List<ReferenceExport> ExportAllReferences(SqliteConnection db)
+    {
+        var refs = new List<ReferenceExport>();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"SELECT
+                d.definition_type, d.name,
+                r.target_type, r.target_name, r.reference_context
+            FROM xml_references r
+            JOIN xml_definitions d ON r.source_def_id = d.id
+            WHERE r.target_name IS NOT NULL";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            refs.Add(new ReferenceExport(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? "" : reader.GetString(2),
+                reader.IsDBNull(3) ? "" : reader.GetString(3),
+                reader.IsDBNull(4) ? "" : reader.GetString(4)
+            ));
+        }
+        return refs;
+    }
+
+    /// <summary>Export all transitive references for the dependency page.</summary>
+    private static List<TransitiveExport> ExportAllTransitiveRefs(SqliteConnection db)
+    {
+        var refs = new List<TransitiveExport>();
+
+        // Check if table exists
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='transitive_references'";
+            if (cmd.ExecuteScalar() == null)
+                return refs;
+        }
+
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT
+                    ds.definition_type, ds.name,
+                    dt.definition_type, dt.name,
+                    tr.path_depth, tr.reference_types
+                FROM transitive_references tr
+                JOIN xml_definitions ds ON tr.source_def_id = ds.id
+                JOIN xml_definitions dt ON tr.target_def_id = dt.id
+                LIMIT 10000";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                refs.Add(new TransitiveExport(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetInt32(4),
+                    reader.IsDBNull(5) ? "" : reader.GetString(5)
+                ));
+            }
+        }
+        return refs;
+    }
+
+    /// <summary>Get detailed mod information for the mods page.</summary>
+    private static List<ModDetailExport> GetAllModDetails(SqliteConnection db)
+    {
+        var details = new List<ModDetailExport>();
+        var modIds = new Dictionary<int, string>();
+
+        // Get all mods
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id, name FROM mods";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                modIds[reader.GetInt32(0)] = reader.GetString(1);
+        }
+
+        foreach (var (modId, modName) in modIds)
+        {
+            var xmlOps = new List<XmlOperationExport>();
+            var patches = new List<HarmonyPatchExport>();
+            var extensions = new List<ClassExtensionExport>();
+
+            // Get XML operations
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT operation, target_type, target_name, property_name, xpath, element_content
+                    FROM mod_xml_operations WHERE mod_id = @id ORDER BY id LIMIT 100";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    xmlOps.Add(new XmlOperationExport(
+                        reader.GetString(0),
+                        reader.IsDBNull(1) ? null : reader.GetString(1),
+                        reader.IsDBNull(2) ? null : reader.GetString(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                        reader.IsDBNull(4) ? null : reader.GetString(4),
+                        reader.IsDBNull(5) ? null : reader.GetString(5)
+                    ));
+                }
+            }
+
+            // Get Harmony patches
+            // The new scanner stores harmony patches with the full target in dependency_name
+            // e.g., harmony_prefix with dependency_name = "XUiC_LootContainer.OnOpen"
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT
+                        dependency_name as target,
+                        CASE dependency_type
+                            WHEN 'harmony_prefix' THEN 'Prefix'
+                            WHEN 'harmony_postfix' THEN 'Postfix'
+                            WHEN 'harmony_transpiler' THEN 'Transpiler'
+                            ELSE 'Patch'
+                        END as patch_type,
+                        code_snippet
+                    FROM mod_csharp_deps
+                    WHERE mod_id = @id
+                    AND dependency_type IN ('harmony_prefix', 'harmony_postfix', 'harmony_transpiler', 'harmony_patch')
+                    ORDER BY dependency_name";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var target = reader.GetString(0);
+                    var patchType = reader.GetString(1);
+                    var codeSnippet = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                    // Split target into class and method (format: "ClassName.MethodName" or just "ClassName")
+                    var lastDot = target.LastIndexOf('.');
+                    string className, methodName;
+                    if (lastDot > 0)
+                    {
+                        className = target.Substring(0, lastDot);
+                        methodName = target.Substring(lastDot + 1);
+                    }
+                    else
+                    {
+                        className = target;
+                        methodName = "";
+                    }
+
+                    patches.Add(new HarmonyPatchExport(className, methodName, patchType, codeSnippet));
+                }
+            }
+
+            // Get class extensions
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT dependency_type, dependency_name
+                    FROM mod_csharp_deps
+                    WHERE mod_id = @id AND (dependency_type LIKE 'extends_%' OR dependency_type LIKE 'implements_%')";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var depType = reader.GetString(0).Replace("extends_", "").Replace("implements_", "");
+                    extensions.Add(new ClassExtensionExport(depType, reader.GetString(1)));
+                }
+            }
+
+            // Get C# entity dependencies (items, blocks, buffs, sounds, etc. referenced in code)
+            var entityDeps = new List<CSharpEntityDependency>();
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT dependency_type, dependency_name, source_file, pattern
+                    FROM mod_csharp_deps
+                    WHERE mod_id = @id 
+                    AND dependency_type IN ('item', 'block', 'entity_class', 'buff', 'recipe', 'sound', 'quest', 'localization')
+                    ORDER BY dependency_type, dependency_name";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    entityDeps.Add(new CSharpEntityDependency(
+                        reader.GetString(0),
+                        reader.GetString(1),
+                        reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        reader.IsDBNull(3) ? "" : reader.GetString(3)
+                    ));
+                }
+            }
+
+            // Get entity type breakdown
+            var entityTypes = new Dictionary<string, int>();
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT target_type, COUNT(*) 
+                    FROM mod_xml_operations 
+                    WHERE mod_id = @id AND target_type IS NOT NULL
+                    GROUP BY target_type ORDER BY COUNT(*) DESC";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    entityTypes[reader.GetString(0)] = reader.GetInt32(1);
+            }
+            
+            // Get top targeted entities
+            var topEntities = new List<string>();
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT target_type || ':' || target_name, COUNT(*) 
+                    FROM mod_xml_operations 
+                    WHERE mod_id = @id AND target_name IS NOT NULL
+                    GROUP BY target_type, target_name 
+                    ORDER BY COUNT(*) DESC LIMIT 10";
+                cmd.Parameters.AddWithValue("@id", modId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    topEntities.Add(reader.GetString(0));
+            }
+
+            details.Add(new ModDetailExport(modName, xmlOps, patches, extensions,
+                entityDeps.Count > 0 ? entityDeps : null,
+                entityTypes.Count > 0 ? entityTypes : null,
+                topEntities.Count > 0 ? topEntities : null));
+        }
+
+        return details;
+    }
+
+    /// <summary>Get call graph nodes if available.</summary>
+    private static List<CallGraphNode> GetCallGraphNodes(SqliteConnection db)
+    {
+        var nodes = new List<CallGraphNode>();
+        // Call graph data would come from the CallGraphExtractor tool
+        // This is a placeholder - actual implementation would query that data
+        return nodes;
+    }
+
+    /// <summary>Get event flow data if available.</summary>
+    private static List<EventFlowEdge> GetEventFlowData(SqliteConnection db)
+    {
+        var events = new List<EventFlowEdge>();
+        // Event flow data would come from the CallGraphExtractor tool
+        // This is a placeholder - actual implementation would query that data
+        return events;
+    }
+
+    /// <summary>Get reference type breakdown.</summary>
+    private static Dictionary<string, int> GetReferenceTypeBreakdown(SqliteConnection db)
+    {
+        var counts = new Dictionary<string, int>();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = @"SELECT reference_context, COUNT(*)
+            FROM xml_references
+            WHERE reference_context IS NOT NULL AND reference_context != ''
+            GROUP BY reference_context
+            ORDER BY COUNT(*) DESC";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            counts[reader.GetString(0)] = reader.GetInt32(1);
+        return counts;
+    }
 }
