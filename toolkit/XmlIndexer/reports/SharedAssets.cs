@@ -352,6 +352,24 @@ a.card-clickable, a.card-clickable:hover,
   border-color: var(--accent);
 }
 
+/* Documentation links */
+.doc-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+.doc-link:hover {
+  border-bottom-style: solid;
+}
+.doc-link[data-confidence='low'] {
+  opacity: 0.7;
+}
+body.hide-doc-links .doc-link {
+  color: inherit;
+  border-bottom: none;
+  pointer-events: none;
+}
+
 /* Severity tabs */
 .severity-tabs {
   display: flex;
@@ -949,6 +967,17 @@ function initTheme() {
   document.documentElement.dataset.theme = saved;
   const select = document.querySelector('.theme-select');
   if (select) select.value = saved;
+  
+  // Doc links toggle
+  const hideDocs = localStorage.getItem('7d2d-hide-doc-links') === 'true';
+  if (hideDocs) document.body.classList.add('hide-doc-links');
+  const docToggle = document.getElementById('doc-link-toggle');
+  if (docToggle) docToggle.checked = !hideDocs;
+}
+
+function toggleDocLinks(checked) {
+  document.body.classList.toggle('hide-doc-links', !checked);
+  localStorage.setItem('7d2d-hide-doc-links', !checked);
 }
 
 function setTheme(theme) {
