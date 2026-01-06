@@ -740,25 +740,47 @@ public static class CSharpAnalyzer
     /// <returns>The method source code, or null if not found</returns>
     public static string? ExtractMethodCode(string classBody, string methodType)
     {
-        // Pattern to find the method signature
-        var methodPattern = methodType switch
+        // Harmony supports multiple naming conventions:
+        // 1. Method named exactly "Prefix", "Postfix", or "Transpiler"
+        // 2. Method with [HarmonyPrefix/Postfix/Transpiler] attribute (any name)
+        // 3. Method named like "MethodName_Prefix", "SomeMethod_Postfix", etc.
+        
+        // First, try to find by [HarmonyX] attribute (most reliable)
+        var attrPattern = methodType switch
         {
-            "Prefix" => new Regex(@"(?:\[HarmonyPrefix\][^\{]*)?(?:public\s+|private\s+)?static\s+(?:bool|void)\s+Prefix\s*\([^\)]*\)\s*\{"),
-            "Postfix" => new Regex(@"(?:\[HarmonyPostfix\][^\{]*)?(?:public\s+|private\s+)?static\s+void\s+Postfix\s*\([^\)]*\)\s*\{"),
-            "Transpiler" => new Regex(@"(?:\[HarmonyTranspiler\][^\{]*)?(?:public\s+|private\s+)?static\s+IEnumerable<CodeInstruction>\s+Transpiler\s*\([^\)]*\)\s*\{"),
+            "Prefix" => new Regex(@"\[HarmonyPrefix\][^\{]*(?:public\s+|private\s+)?static\s+(?:bool|void)\s+(\w+)\s*\([^\)]*\)\s*\{", RegexOptions.Singleline),
+            "Postfix" => new Regex(@"\[HarmonyPostfix\][^\{]*(?:public\s+|private\s+)?static\s+void\s+(\w+)\s*\([^\)]*\)\s*\{", RegexOptions.Singleline),
+            "Transpiler" => new Regex(@"\[HarmonyTranspiler\][^\{]*(?:public\s+|private\s+)?static\s+IEnumerable<CodeInstruction>\s+(\w+)\s*\([^\)]*\)\s*\{", RegexOptions.Singleline),
             _ => null
         };
 
-        if (methodPattern == null) return null;
+        Match? match = null;
+        
+        if (attrPattern != null)
+            match = attrPattern.Match(classBody);
+        
+        // Fallback: look for method named exactly "Prefix/Postfix/Transpiler" or ending with "_Prefix/_Postfix/_Transpiler"
+        if (match == null || !match.Success)
+        {
+            var namePattern = methodType switch
+            {
+                "Prefix" => new Regex(@"(?:public\s+|private\s+)?static\s+(?:bool|void)\s+(\w*Prefix)\s*\([^\)]*\)\s*\{"),
+                "Postfix" => new Regex(@"(?:public\s+|private\s+)?static\s+void\s+(\w*Postfix)\s*\([^\)]*\)\s*\{"),
+                "Transpiler" => new Regex(@"(?:public\s+|private\s+)?static\s+IEnumerable<CodeInstruction>\s+(\w*Transpiler)\s*\([^\)]*\)\s*\{"),
+                _ => null
+            };
+            
+            if (namePattern != null)
+                match = namePattern.Match(classBody);
+        }
 
-        var match = methodPattern.Match(classBody);
-        if (!match.Success) return null;
+        if (match == null || !match.Success) return null;
 
         // Find where the method signature starts (including any attributes)
         var signatureStart = match.Index;
 
         // Look back for [HarmonyPrefix/Postfix/Transpiler] attribute if present
-        var attrPattern = new Regex($@"\[Harmony{methodType}\]\s*$");
+        var attrLinePattern = new Regex($@"\[Harmony{methodType}\]\s*$");
         var precedingText = classBody.Substring(0, signatureStart);
         var lines = precedingText.Split('\n');
         var lastLine = lines.Length > 0 ? lines[^1] : "";
