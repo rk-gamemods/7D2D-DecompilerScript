@@ -370,6 +370,17 @@ body.hide-doc-links .doc-link {
   pointer-events: none;
 }
 
+/* Entity links (internal navigation) */
+.entity-link {
+  color: var(--accent-secondary);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent-secondary);
+}
+.entity-link:hover {
+  border-bottom-style: solid;
+  color: var(--accent);
+}
+
 /* Severity tabs */
 .severity-tabs {
   display: flex;

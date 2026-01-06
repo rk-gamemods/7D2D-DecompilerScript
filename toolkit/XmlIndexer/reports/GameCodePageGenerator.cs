@@ -213,13 +213,38 @@ function escapeHtml(text) {{
 
 // C# keywords to link to Microsoft Learn
 const CSHARP_KEYWORDS = {{
-  'abstract': 'abstract', 'async': 'async', 'await': 'await', 'class': 'class',
-  'const': 'const', 'delegate': 'delegate', 'enum': 'enum', 'event': 'event',
-  'interface': 'interface', 'internal': 'internal', 'namespace': 'namespace',
-  'new': 'new-operator', 'override': 'override', 'partial': 'partial-type',
-  'private': 'private', 'protected': 'protected', 'public': 'public',
-  'readonly': 'readonly', 'sealed': 'sealed', 'static': 'static',
-  'struct': 'struct', 'virtual': 'virtual', 'volatile': 'volatile', 'yield': 'yield'
+  // Access modifiers
+  'public': 'public', 'private': 'private', 'protected': 'protected', 'internal': 'internal',
+  // Class modifiers
+  'abstract': 'abstract', 'sealed': 'sealed', 'static': 'static', 'partial': 'partial-type',
+  'virtual': 'virtual', 'override': 'override', 'new': 'new-modifier',
+  // Type definitions
+  'class': 'class', 'struct': 'struct', 'interface': 'interface', 'enum': 'enum',
+  'delegate': 'delegate', 'record': 'record', 'namespace': 'namespace',
+  // Built-in types (link to builtin-types overview)
+  'int': 'builtin-types', 'string': 'builtin-types', 'bool': 'builtin-types',
+  'void': 'void', 'float': 'builtin-types', 'double': 'builtin-types',
+  'decimal': 'builtin-types', 'byte': 'builtin-types', 'sbyte': 'builtin-types',
+  'short': 'builtin-types', 'ushort': 'builtin-types', 'uint': 'builtin-types',
+  'long': 'builtin-types', 'ulong': 'builtin-types', 'char': 'builtin-types',
+  'object': 'builtin-types', 'dynamic': 'builtin-types',
+  // Variable declarations
+  'var': 'var', 'const': 'const', 'readonly': 'readonly', 'volatile': 'volatile',
+  // Control flow
+  'if': 'if-else', 'else': 'if-else', 'switch': 'switch', 'case': 'switch',
+  'for': 'for', 'foreach': 'foreach-in', 'while': 'while', 'do': 'do',
+  'break': 'break', 'continue': 'continue', 'return': 'return', 'goto': 'goto',
+  // Exception handling
+  'try': 'try-catch', 'catch': 'try-catch', 'finally': 'try-finally', 'throw': 'throw',
+  // Async
+  'async': 'async', 'await': 'await',
+  // Other keywords
+  'using': 'using', 'lock': 'lock-statement', 'event': 'event',
+  'in': 'in', 'out': 'out-parameter-modifier', 'ref': 'ref', 'params': 'params',
+  'true': 'true-false-literals', 'false': 'true-false-literals', 'null': 'null',
+  'this': 'this', 'base': 'base', 'typeof': 'typeof', 'sizeof': 'sizeof',
+  'is': 'is', 'as': 'as', 'where': 'where-generic-type-constraint',
+  'get': 'get', 'set': 'set', 'value': 'value', 'yield': 'yield'
 }};
 
 // Linkify C# keywords in code (first occurrence only)

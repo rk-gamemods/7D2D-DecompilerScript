@@ -194,14 +194,14 @@ function renderMods(mods) {{
                     var hasTarget = op.targetType && op.targetName;
                     var targetCell = hasTarget 
                       ? '<a href=""entities.html?search=' + encodeURIComponent(op.targetName || '') + '""><span class=""tag tag-type"">' + (op.targetType || '') + '</span> ' + (op.targetName || '') + '</a>'
-                      : (op.xpath ? '<code class=""text-muted"" style=""font-size: 11px; word-break: break-all;"">' + escapeHtml(op.xpath) + '</code>' : '<span class=""text-dim"">-</span>');
+                      : (op.xpath ? '<code class=""text-muted"" style=""font-size: 11px; word-break: break-all;"">' + linkifyXPath(op.xpath) + '</code>' : '<span class=""text-dim"">-</span>');
                     
                     var detailsCell;
                     if (op.property) {{
                       detailsCell = '<span class=""text-muted"">' + escapeHtml(op.property) + '</span>';
                     }}
                     if (op.elementContent) {{
-                      var xmlContent = '<details class=""xml-expand""><summary style=""cursor: pointer; font-size: 11px; color: var(--accent-secondary);"">' + (op.property ? '' : '📄 ') + 'View XML</summary><pre style=""background: var(--bg-secondary); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; font-size: 10px; overflow-x: auto; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"">' + escapeHtml(op.elementContent) + '</pre></details>';
+                      var xmlContent = '<details class=""xml-expand""><summary style=""cursor: pointer; font-size: 11px; color: var(--accent-secondary);"">' + (op.property ? '' : '📄 ') + 'View XML</summary><pre style=""background: var(--bg-secondary); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; font-size: 10px; overflow-x: auto; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"">' + linkifyXml(op.elementContent) + '</pre></details>';
                       detailsCell = (detailsCell || '') + xmlContent;
                     }}
                     if (!detailsCell) {{
@@ -295,6 +295,92 @@ function getModTypeBadge(type) {{
 function escapeHtml(str) {{
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/""/g, '&quot;');
+}}
+
+// XPath operators to link to W3C docs
+const XPATH_LINKS = {{
+  '//': 'https://www.w3.org/TR/xpath/#path-abbrev',
+  '/': 'https://www.w3.org/TR/xpath/#location-paths',
+  '@': 'https://www.w3.org/TR/xpath/#attribute-nodes',
+  '..': 'https://www.w3.org/TR/xpath/#path-abbrev',
+  '.': 'https://www.w3.org/TR/xpath/#path-abbrev',
+  'ancestor::': 'https://www.w3.org/TR/xpath/#axes',
+  'ancestor-or-self::': 'https://www.w3.org/TR/xpath/#axes',
+  'child::': 'https://www.w3.org/TR/xpath/#axes',
+  'descendant::': 'https://www.w3.org/TR/xpath/#axes',
+  'descendant-or-self::': 'https://www.w3.org/TR/xpath/#axes',
+  'following::': 'https://www.w3.org/TR/xpath/#axes',
+  'following-sibling::': 'https://www.w3.org/TR/xpath/#axes',
+  'parent::': 'https://www.w3.org/TR/xpath/#axes',
+  'preceding::': 'https://www.w3.org/TR/xpath/#axes',
+  'preceding-sibling::': 'https://www.w3.org/TR/xpath/#axes',
+  'self::': 'https://www.w3.org/TR/xpath/#axes',
+  'contains(': 'https://www.w3.org/TR/xpath/#function-contains',
+  'starts-with(': 'https://www.w3.org/TR/xpath/#function-starts-with',
+  'not(': 'https://www.w3.org/TR/xpath/#function-not',
+  'last()': 'https://www.w3.org/TR/xpath/#function-last',
+  'position()': 'https://www.w3.org/TR/xpath/#function-position'
+}};
+
+// Linkify XPath expression (link operators to W3C docs)
+function linkifyXPath(xpath) {{
+  if (!xpath) return '';
+  let html = escapeHtml(xpath);
+  const linked = new Set();
+  // Sort by length descending so longer matches take precedence
+  const ops = Object.keys(XPATH_LINKS).sort((a, b) => b.length - a.length);
+  for (const op of ops) {{
+    if (linked.has(op)) continue;
+    const escaped = op.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    const pattern = new RegExp('(' + escaped + ')', 'g');
+    if (pattern.test(html)) {{
+      const url = XPATH_LINKS[op];
+      html = html.replace(pattern, '<a href=""' + url + '"" class=""doc-link"" target=""_blank"" title=""XPath: ' + escapeHtml(op) + '"">$1</a>');
+      linked.add(op);
+    }}
+  }}
+  return html;
+}}
+
+// Linkify XML content (link entity names to entities page, XPath operators to docs)
+function linkifyXml(xml) {{
+  if (!xml) return '';
+  let html = escapeHtml(xml);
+  
+  // Link name="" attributes to entities page (common pattern in 7D2D XML)
+  html = html.replace(/name=&quot;([^&]+)&quot;/g, function(match, name) {{
+    return 'name=&quot;<a href=""entities.html?search=' + encodeURIComponent(name) + '"" class=""entity-link"" title=""View entity: ' + name + '"">' + name + '</a>&quot;';
+  }});
+  
+  // Also link ingredient/extends/parent/lootgroup references
+  html = html.replace(/(?:ingredient|extends|parent|group|item|block|buff|entity_class)=&quot;([^&]+)&quot;/gi, function(match, name) {{
+    return match.replace(name, '<a href=""entities.html?search=' + encodeURIComponent(name) + '"" class=""entity-link"" title=""View entity: ' + name + '"">' + name + '</a>');
+  }});
+  
+  // Link xpath="" attributes (with XPath operator highlighting)
+  html = html.replace(/xpath=&quot;([^&]+)&quot;/g, function(match, xpath) {{
+    return 'xpath=&quot;' + linkifyXPathInline(xpath) + '&quot;';
+  }});
+  
+  return html;
+}}
+
+// Inline XPath linking (for use within XML attributes, already escaped)
+function linkifyXPathInline(xpath) {{
+  const ops = Object.keys(XPATH_LINKS).sort((a, b) => b.length - a.length);
+  let html = xpath;
+  const linked = new Set();
+  for (const op of ops) {{
+    if (linked.has(op)) continue;
+    const escaped = op.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    const pattern = new RegExp('(' + escaped + ')', 'g');
+    if (pattern.test(html)) {{
+      const url = XPATH_LINKS[op];
+      html = html.replace(pattern, '<a href=""' + url + '"" class=""doc-link"" target=""_blank"" title=""XPath: ' + op.replace(/</g, '&lt;') + '"">$1</a>');
+      linked.add(op);
+    }}
+  }}
+  return html;
 }}
 
 function getHealthBadge(health) {{

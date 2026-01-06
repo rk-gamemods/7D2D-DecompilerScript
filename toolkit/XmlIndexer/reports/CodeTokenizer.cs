@@ -14,12 +14,28 @@ public class CodeTokenizer
     // C# keywords to detect
     private static readonly HashSet<string> CSharpKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "abstract", "async", "await", "class", "const", "delegate", "enum",
-        "event", "interface", "internal", "namespace", "new", "override",
-        "partial", "private", "protected", "public", "readonly", "sealed",
-        "static", "struct", "virtual", "volatile", "void", "yield", "return", "throw",
-        "if", "else", "for", "foreach", "while", "do", "switch", "case",
-        "try", "catch", "finally", "using", "lock", "ref", "out", "in"
+        // Access modifiers
+        "public", "private", "protected", "internal",
+        // Class modifiers
+        "abstract", "sealed", "static", "partial", "virtual", "override", "new",
+        // Type definitions
+        "class", "struct", "interface", "enum", "delegate", "record", "namespace",
+        // Built-in types
+        "int", "string", "bool", "void", "float", "double", "decimal",
+        "byte", "sbyte", "short", "ushort", "uint", "long", "ulong", "char",
+        "object", "dynamic", "var",
+        // Variable modifiers
+        "const", "readonly", "volatile",
+        // Control flow
+        "if", "else", "switch", "case", "for", "foreach", "while", "do",
+        "break", "continue", "return", "goto", "yield", "throw",
+        // Exception handling
+        "try", "catch", "finally",
+        // Other keywords
+        "async", "await", "using", "lock", "event",
+        "ref", "out", "in", "params",
+        "true", "false", "null", "this", "base",
+        "typeof", "sizeof", "is", "as", "where", "get", "set", "value"
     };
 
     // XPath operators/axes
