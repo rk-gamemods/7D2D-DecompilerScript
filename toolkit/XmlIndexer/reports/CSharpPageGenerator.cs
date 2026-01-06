@@ -101,7 +101,42 @@ public static class CSharpPageGenerator
                 body.AppendLine(@"</div></details>");
             }
             if (patchesByClass.Count > 15)
-                body.AppendLine($@"<p class=""text-muted"" style=""margin-top: 0.5rem;"">... and {patchesByClass.Count - 15} more target classes</p>");
+            {
+                // Expandable section for remaining classes
+                body.AppendLine(@"<details style=""margin-top: 0.5rem;"">");
+                body.AppendLine($@"<summary class=""text-muted"" style=""cursor: pointer;"">Show {patchesByClass.Count - 15} more target classes...</summary>");
+                body.AppendLine(@"<div class=""details-body"">");
+                foreach (var classGroup in patchesByClass.Skip(15))
+                {
+                    body.AppendLine(@"<details>");
+                    body.AppendLine($@"<summary>");
+                    body.AppendLine($@"<code style=""flex: 1;"">{SharedAssets.HtmlEncode(classGroup.Key)}</code>");
+                    body.AppendLine($@"<span class=""text-dim"" style=""font-size: 12px;"">{classGroup.Count()} patches</span>");
+                    body.AppendLine(@"</summary>");
+                    body.AppendLine(@"<div class=""details-body"">");
+                    body.AppendLine(@"<table class=""data-table"">");
+                    body.AppendLine(@"<thead><tr><th>Mod</th><th>Method</th><th>Type</th></tr></thead>");
+                    body.AppendLine(@"<tbody>");
+                    foreach (var patch in classGroup)
+                    {
+                        var patchClass = patch.PatchType switch
+                        {
+                            "Prefix" => "tag-medium",
+                            "Postfix" => "tag-low",
+                            "Transpiler" => "tag-high",
+                            _ => "tag-info"
+                        };
+                        body.AppendLine($@"<tr>");
+                        body.AppendLine($@"<td><a href=""mods.html?search={SharedAssets.UrlEncode(patch.ModName)}"">{SharedAssets.HtmlEncode(patch.ModName)}</a></td>");
+                        body.AppendLine($@"<td><code>{SharedAssets.HtmlEncode(patch.MethodName)}</code></td>");
+                        body.AppendLine($@"<td><span class=""tag {patchClass}"">{patch.PatchType}</span></td>");
+                        body.AppendLine(@"</tr>");
+                    }
+                    body.AppendLine(@"</tbody></table>");
+                    body.AppendLine(@"</div></details>");
+                }
+                body.AppendLine(@"</div></details>");
+            }
             body.AppendLine(@"</div>");
         }
         else
@@ -153,10 +188,7 @@ public static class CSharpPageGenerator
         }
         body.AppendLine(@"</div>");
 
-        // Mods with C# dependencies table
-        body.AppendLine(@"<div style=""margin-bottom: 2rem;"">");
-        body.AppendLine(@"<h2 style=""margin-bottom: 1rem;"">C# Mods Overview</h2>");
-
+        // Mods with C# dependencies table - only show if there are C# mods
         var csharpMods = data.ModSummary
             .Where(m => m.ModType == "C# Code" || m.ModType == "Hybrid")
             .OrderByDescending(m => m.CSharpDeps)
@@ -164,6 +196,8 @@ public static class CSharpPageGenerator
 
         if (csharpMods.Any())
         {
+            body.AppendLine(@"<div style=""margin-bottom: 2rem;"">");
+            body.AppendLine(@"<h2 style=""margin-bottom: 1rem;"">C# Mods Overview</h2>");
             body.AppendLine(@"<table class=""data-table"">");
             body.AppendLine(@"<thead><tr><th>Mod</th><th>Type</th><th>C# Deps</th><th>XML Ops</th><th>Health</th></tr></thead>");
             body.AppendLine(@"<tbody>");
@@ -178,8 +212,8 @@ public static class CSharpPageGenerator
                 body.AppendLine(@"</tr>");
             }
             body.AppendLine(@"</tbody></table>");
+            body.AppendLine(@"</div>");
         }
-        body.AppendLine(@"</div>");
 
         // Call graph section (if available)
         if (extData.CallGraphNodes.Any())
