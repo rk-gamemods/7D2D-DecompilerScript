@@ -59,6 +59,7 @@ public static class GameCodePageGenerator
         body.AppendLine(@"<div class=""filter-bar"">");
         body.AppendLine(@"  <input type=""text"" class=""filter-search"" id=""gamecode-search"" placeholder=""Search classes, methods, buffs, items..."" oninput=""filterGameCode()"">");
         body.AppendLine(@"  <label class=""fuzzy-toggle""><input type=""checkbox"" id=""fuzzy-toggle"" checked onchange=""filterGameCode()""> Fuzzy</label>");
+        body.AppendLine(@"  <label class=""fuzzy-toggle""><input type=""checkbox"" id=""doc-link-toggle"" checked onchange=""toggleDocLinks(this.checked)""> Doc Links</label>");
         body.AppendLine(@"  <select class=""filter-select"" id=""type-filter"" onchange=""filterGameCode()"">");
         body.AppendLine(@"    <option value="""">All Types</option>");
         body.AppendLine(@"    <option value=""hookable_event"">Hookable Events</option>");
@@ -208,6 +209,34 @@ function escapeHtml(text) {{
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}}
+
+// C# keywords to link to Microsoft Learn
+const CSHARP_KEYWORDS = {{
+  'abstract': 'abstract', 'async': 'async', 'await': 'await', 'class': 'class',
+  'const': 'const', 'delegate': 'delegate', 'enum': 'enum', 'event': 'event',
+  'interface': 'interface', 'internal': 'internal', 'namespace': 'namespace',
+  'new': 'new-operator', 'override': 'override', 'partial': 'partial-type',
+  'private': 'private', 'protected': 'protected', 'public': 'public',
+  'readonly': 'readonly', 'sealed': 'sealed', 'static': 'static',
+  'struct': 'struct', 'virtual': 'virtual', 'volatile': 'volatile', 'yield': 'yield'
+}};
+
+// Linkify C# keywords in code (first occurrence only)
+function linkifyCSharp(code) {{
+  if (!code) return '';
+  let html = escapeHtml(code);
+  const linked = new Set();
+  for (const [kw, slug] of Object.entries(CSHARP_KEYWORDS)) {{
+    if (linked.has(kw)) continue;
+    const pattern = new RegExp('\\\\b(' + kw + ')\\\\b');
+    if (pattern.test(html)) {{
+      const url = 'https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/' + slug;
+      html = html.replace(pattern, '<a href=""' + url + '"" class=""doc-link"" target=""_blank"" title=""C# keyword: ' + kw + '"">$1</a>');
+      linked.add(kw);
+    }}
+  }}
+  return html;
 }}
 
 // Escape text for use in HTML attributes (handles quotes and special chars)
@@ -775,8 +804,8 @@ function renderFinding(f, idx, typeContext) {{
     // Container with max-height for scrolling
     html += '<div style=""max-height:500px;overflow:auto;border:1px solid var(--border);border-radius:4px;margin:0.5rem 0;"">';
     
-    // Highlight the entity name in the code
-    let codeHtml = escapeHtml(methodBody);
+    // Linkify C# keywords and highlight the entity name in the code
+    let codeHtml = linkifyCSharp(methodBody);
     if (f.entityName) {{
       const entityEscaped = f.entityName.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
       const regex = new RegExp('(' + entityEscaped + ')', 'gi');
