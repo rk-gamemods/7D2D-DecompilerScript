@@ -1,1 +1,0 @@
-{"entity_type": "consumable", "entity_name": "Pain Killer", "layman_description": "Medicine that restores health and removes infection status.", "technical_description": "Pharmaceutical consumable restoring 30 health, curing disease, 10-second application window.", "player_impact": "Provides recovery option during infection status debuffs."}

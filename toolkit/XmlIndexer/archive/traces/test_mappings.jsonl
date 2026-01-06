@@ -1,2 +1,0 @@
-{"entity_type":"csharp_class","entity_name":"XUiM_PlayerInventory","parent_context":null,"layman_description":"Controls your backpack and crafting material access","llm_model":"test"}
-{"entity_type":"csharp_class","entity_name":"ItemActionEat","parent_context":null,"layman_description":"Handles eating food and drinking items","llm_model":"test"}

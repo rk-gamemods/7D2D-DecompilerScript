@@ -789,15 +789,15 @@ dotnet run -- "../callgraph.db" "SELECT * FROM methods WHERE name = 'Update' LIM
 - [x] Shows modifier (virtual/override/abstract) and base type
 - [x] **COMMIT: "Add comprehensive CLI commands to QueryDb"**
 
-#### Commit 17: AI context document ⏳ TODO
-- [ ] Create `AI_CONTEXT.md` with usage examples
-- [ ] Document query patterns for common problems
-- [ ] Include expected output formats
+#### Commit 17: AI context document ✅
+- [x] Create `AI_CONTEXT.md` with usage examples
+- [x] Document query patterns for common problems
+- [x] Include expected output formats
 
-#### Commit 18: README and integration ⏳ TODO
-- [ ] Update main README with toolkit usage
-- [ ] Add PowerShell wrapper to call toolkit after decompile
-- [ ] End-to-end test: decompile → build DB → query
+#### Commit 18: README and integration ✅
+- [x] Update main README with toolkit usage
+- [x] Add PowerShell wrapper to call toolkit after decompile
+- [x] End-to-end test: decompile → build DB → query
 
 ### Phase 7: Performance Analysis (NEW PHASE) ✅ COMPLETE
 
