@@ -488,25 +488,30 @@ public static class ReportDataCollector
                 csharpByType[reader.GetString(0)] = reader.GetInt32(1);
         }
 
+        // Harmony patches are stored as 'ClassName.MethodName' in dependency_name 
+        // with dependency_type of harmony_prefix, harmony_postfix, or harmony_transpiler
         using (var cmd = db.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT DISTINCT m.name, hc.dependency_name as class_name,
-                    COALESCE(hm.dependency_name, '') as method_name,
-                    CASE 
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_prefix' AND hp.source_file = hc.source_file) THEN 'Prefix'
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_postfix' AND hp.source_file = hc.source_file) THEN 'Postfix'
-                        WHEN EXISTS(SELECT 1 FROM mod_csharp_deps hp WHERE hp.mod_id = m.id 
-                            AND hp.dependency_type = 'harmony_transpiler' AND hp.source_file = hc.source_file) THEN 'Transpiler'
+                SELECT DISTINCT m.name, 
+                    CASE WHEN INSTR(mcd.dependency_name, '.') > 0 
+                        THEN SUBSTR(mcd.dependency_name, 1, INSTR(mcd.dependency_name, '.') - 1)
+                        ELSE mcd.dependency_name 
+                    END as class_name,
+                    CASE WHEN INSTR(mcd.dependency_name, '.') > 0 
+                        THEN SUBSTR(mcd.dependency_name, INSTR(mcd.dependency_name, '.') + 1)
+                        ELSE '' 
+                    END as method_name,
+                    CASE mcd.dependency_type
+                        WHEN 'harmony_prefix' THEN 'Prefix'
+                        WHEN 'harmony_postfix' THEN 'Postfix'
+                        WHEN 'harmony_transpiler' THEN 'Transpiler'
                         ELSE 'Patch'
                     END as patch_type
                 FROM mods m
-                JOIN mod_csharp_deps hc ON hc.mod_id = m.id AND hc.dependency_type = 'harmony_class'
-                LEFT JOIN mod_csharp_deps hm ON hm.mod_id = m.id AND hm.dependency_type = 'harmony_method' 
-                    AND hm.source_file = hc.source_file
-                ORDER BY m.name, hc.dependency_name";
+                JOIN mod_csharp_deps mcd ON mcd.mod_id = m.id 
+                WHERE mcd.dependency_type IN ('harmony_prefix', 'harmony_postfix', 'harmony_transpiler')
+                ORDER BY m.name, class_name, method_name";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 harmonyPatches.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
