@@ -1154,4 +1154,84 @@ const {varName} = {jsonData};
     {
         return $@"<a href=""mods.html?search={UrlEncode(modName)}"">{HtmlEncode(modName)}</a>";
     }
+
+    // Static resolver instance (lazy-loaded)
+    private static DocumentationResolver? _docResolver;
+    private static CodeTokenizer? _tokenizer;
+
+    /// <summary>
+    /// Get the shared documentation resolver, loading tooltips on first use.
+    /// </summary>
+    public static DocumentationResolver GetDocResolver()
+    {
+        if (_docResolver == null)
+        {
+            _docResolver = new DocumentationResolver();
+            // Tooltips loaded separately if JSON file exists
+        }
+        return _docResolver;
+    }
+
+    /// <summary>
+    /// Get the shared code tokenizer.
+    /// </summary>
+    public static CodeTokenizer GetTokenizer()
+    {
+        return _tokenizer ??= new CodeTokenizer();
+    }
+
+    /// <summary>
+    /// Linkify C# keywords in a code snippet (first occurrence only).
+    /// </summary>
+    public static string LinkifyCSharp(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return HtmlEncode(code);
+
+        var resolver = GetDocResolver();
+        var tokenizer = GetTokenizer();
+        var result = code;
+
+        // Get linkable tokens sorted by position descending (so we can replace from end)
+        var tokens = tokenizer.ExtractLinkable(code, isCSharp: true)
+            .OrderByDescending(t => t.StartIndex)
+            .ToList();
+
+        foreach (var token in tokens)
+        {
+            var link = resolver.FormatAsLink(token.Value, DocumentationResolver.TokenContext.CSharp);
+            if (link != token.Value) // Only if we got an actual link
+            {
+                result = result.Substring(0, token.StartIndex) + link + result.Substring(token.StartIndex + token.Length);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Linkify XPath operators in an expression (first occurrence only).
+    /// </summary>
+    public static string LinkifyXPath(string xpath)
+    {
+        if (string.IsNullOrWhiteSpace(xpath)) return HtmlEncode(xpath);
+
+        var resolver = GetDocResolver();
+        var tokenizer = GetTokenizer();
+        var result = xpath;
+
+        var tokens = tokenizer.ExtractLinkable(xpath, isCSharp: false)
+            .OrderByDescending(t => t.StartIndex)
+            .ToList();
+
+        foreach (var token in tokens)
+        {
+            var link = resolver.FormatAsLink(token.Value, DocumentationResolver.TokenContext.XPath);
+            if (link != token.Value)
+            {
+                result = result.Substring(0, token.StartIndex) + link + result.Substring(token.StartIndex + token.Length);
+            }
+        }
+
+        return result;
+    }
 }
