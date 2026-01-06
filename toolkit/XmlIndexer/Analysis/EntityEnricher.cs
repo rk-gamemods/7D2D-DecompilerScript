@@ -743,52 +743,110 @@ public class EntityEnricher
 
     private static string GenerateReasoning(string category, string? entityType, string? entityName, string? codeSnippet)
     {
+        // Verbose, user-friendly explanations that explain "why this matters"
         if (!string.IsNullOrEmpty(entityName))
         {
-            return $"Code references '{entityName}' ({entityType ?? "unknown type"}) directly in source";
+            var typeDesc = entityType?.ToLower() switch
+            {
+                "buff" => "buff (status effect)",
+                "item" => "item",
+                "block" => "block type",
+                "entity" => "entity (creature/NPC)",
+                "sound" => "sound effect",
+                _ => entityType ?? "game element"
+            };
+            return $"The game's code specifically looks for a {typeDesc} named '{entityName}'. " +
+                   $"If your mod removes or renames this {typeDesc}, this code will still try to use it, " +
+                   "which could cause errors or unexpected behavior.";
         }
 
-        // Use specific reasoning for each category to avoid duplication like "code pattern pattern"
+        // Detailed reasoning for each category
         return category switch
         {
-            "Code Pattern" => "Pattern detected in game code that may affect mod compatibility",
-            "Extension Point" => "This is an extension point where mods can safely hook in",
-            "Debug Tool" => "Console command or debug utility - only accessible via F1 console",
-            "System Access" => "Accesses a game system singleton - common but may have side effects",
-            "Incomplete Implementation" => "Method is incomplete or stubbed - potential hook point for mods",
-            "Missing Feature" => "Method throws NotImplementedException - safe to ignore unless called",
-            "Error Handling" => "Error handling pattern detected - review for edge cases",
-            "Developer Note" => "Contains TODO or developer comment indicating incomplete work",
-            "Status Effect" => "References a buff/debuff status effect",
-            "Item Reference" => "References an item by name in code",
-            "Block Reference" => "References a block type in code",
-            "Entity Spawn" => "Spawns or references an entity class",
-            "Audio Reference" => "References a sound effect or audio",
-            "Crafting" => "References a crafting recipe",
-            "Quest System" => "References quest or progression system",
-            "Game Entity" => "References a game entity directly in code",
-            _ => $"Found {category.ToLower()} in game code"
+            "Code Pattern" => "This code follows a pattern that the game relies on. " +
+                "Understanding this pattern helps you predict how the game will behave when you make changes.",
+
+            "Extension Point" => "This is a designed extension point where the developers intended mods to hook in. " +
+                "It's safer and more reliable than patching random code locations.",
+
+            "Debug Tool" => "This is a debug command accessible via the F1 console. " +
+                "Useful for testing, but players won't see it during normal gameplay.",
+
+            "System Access" => "This code accesses a core game system. " +
+                "Changes here can have wide-reaching effects across the game.",
+
+            "Incomplete Implementation" => "This method is incomplete or empty (a 'stub'). " +
+                "The developers may have planned to add more code here, making it a good place for mods to inject functionality.",
+
+            "Missing Feature" => "This code explicitly throws 'not implemented'. " +
+                "It's a placeholder that was never completed - safe to ignore unless something actually calls it.",
+
+            "Error Handling" => "This handles errors or edge cases. " +
+                "Pay attention to what conditions trigger this code path.",
+
+            "Developer Note" => "A developer left a TODO or comment here indicating work in progress. " +
+                "This area may change in future game updates.",
+
+            "Status Effect" => "This code interacts with a buff or debuff. " +
+                "If you modify how buffs work, this code may be affected.",
+
+            "Item Reference" => "This code references a specific item by name. " +
+                "The item must exist in your mod's XML for this code to work correctly.",
+
+            "Block Reference" => "This code references a specific block type. " +
+                "The block must be defined in your mod's blocks.xml.",
+
+            "Entity Spawn" => "This code spawns or interacts with an entity (zombie, animal, NPC). " +
+                "Entity names must match what's defined in entityclasses.xml.",
+
+            "Audio Reference" => "This code plays a sound effect. " +
+                "The sound file must exist in your mod's Resources folder if you're overriding it.",
+
+            "Crafting" => "This code interacts with the crafting system. " +
+                "Recipe changes in XML will affect how this code behaves.",
+
+            "Quest System" => "This code is part of the quest/progression system. " +
+                "Changes here can affect player progression and achievements.",
+
+            "Game Entity" => "This code works with game entities (players, zombies, items in the world). " +
+                "It's fundamental to how the game world operates.",
+
+            _ => $"This {category.ToLower()} was found in the game code. " +
+                "Review the code context to understand how it might affect your mod."
         };
     }
 
     private static string GenerateAdvice(string category, string moddability, string? analysisType)
     {
+        // Step-by-step, actionable guidance
         if (analysisType == "hardcoded_entity")
         {
-            return "Use Harmony to patch the method and redirect to your custom entity, or ensure the referenced entity exists in your mod's XML";
+            return "You have two options:\n" +
+                   "1. Keep the referenced item/entity in your mod (you can change what it does, just keep the name)\n" +
+                   "2. Use a Harmony patch to make this code look for a different name\n\n" +
+                   "Option 1 is simpler and safer for most mods.";
         }
 
         if (analysisType == "hookable_event")
         {
-            return "Safe to extend via Harmony Postfix - add custom behavior after vanilla logic";
+            return "This is a good hook point. You can:\n" +
+                   "1. Add a Harmony Postfix to run your code AFTER the game's code\n" +
+                   "2. Add a Harmony Prefix to run your code BEFORE (or instead of) the game's code\n\n" +
+                   "Postfix is safer since it lets the original code run first.";
         }
 
         if (analysisType == "stub_method")
         {
-            return "Good hook point - replace with Harmony Prefix returning false to inject custom logic";
+            return "This empty method is perfect for injecting your own logic:\n" +
+                   "1. Create a Harmony Prefix patch that returns 'false'\n" +
+                   "2. Your Prefix code will run instead of the empty method\n\n" +
+                   "This is one of the safest ways to add new functionality.";
         }
 
-        return "Review the code context to determine best modding approach";
+        return "Review the surrounding code to understand the context, then decide:\n" +
+               "- Can you achieve your goal with XML changes alone?\n" +
+               "- Do you need a Harmony patch to modify behavior?\n" +
+               "- Is there a game event you can subscribe to instead?";
     }
 
     #endregion
