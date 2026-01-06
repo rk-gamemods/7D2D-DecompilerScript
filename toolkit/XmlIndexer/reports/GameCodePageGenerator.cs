@@ -229,7 +229,7 @@ function linkifyCSharp(code) {{
   const linked = new Set();
   for (const [kw, slug] of Object.entries(CSHARP_KEYWORDS)) {{
     if (linked.has(kw)) continue;
-    const pattern = new RegExp('\\\\b(' + kw + ')\\\\b');
+    const pattern = new RegExp('\\b(' + kw + ')\\b');
     if (pattern.test(html)) {{
       const url = 'https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/' + slug;
       html = html.replace(pattern, '<a href=""' + url + '"" class=""doc-link"" target=""_blank"" title=""C# keyword: ' + kw + '"">$1</a>');
