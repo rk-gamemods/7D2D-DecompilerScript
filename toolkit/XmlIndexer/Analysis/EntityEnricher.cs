@@ -824,17 +824,31 @@ public class EntityEnricher
 
     private static (string Body, int StartLine, int EndLine) ExtractMethodBody(string[] lines, int targetLine, string? methodName)
     {
-        // Scan backwards to find method signature
+        // Scan backwards to find method or property signature
         int startLine = targetLine;
-        var methodPattern = new Regex(@"(?:public|private|protected|internal)\s+(?:static\s+)?(?:virtual\s+)?(?:override\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?)\s+\w+\s*\(");
+        
+        // Pattern for methods (has parentheses)
+        var methodPattern = new Regex(@"(?:public|private|protected|internal)\s+(?:(?:static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial)\s+)*(?:\w+(?:<[^>]+>)?)\s+\w+\s*\(");
+        
+        // Pattern for properties (no parentheses, has { or => after name)
+        var propertyPattern = new Regex(@"(?:public|private|protected|internal)\s+(?:(?:static|virtual|override|abstract|sealed|new|extern|unsafe)\s+)*(?:\w+(?:<[^>]+>)?(?:\?)?(?:\[\])?)\s+\w+\s*(?:=>|\{|$)");
 
         for (int i = targetLine; i >= 0; i--)
         {
+            // Check for method signature first
             if (methodPattern.IsMatch(lines[i]))
             {
                 startLine = i;
                 break;
             }
+            
+            // Check for property signature (no parentheses)
+            if (propertyPattern.IsMatch(lines[i]) && !lines[i].Contains('('))
+            {
+                startLine = i;
+                break;
+            }
+            
             // Stop if we hit a class declaration
             if (Regex.IsMatch(lines[i], @"(?:class|struct|interface)\s+\w+"))
                 break;

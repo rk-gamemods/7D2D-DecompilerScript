@@ -545,17 +545,34 @@ public class GameCodeAnalyzer
 
     private static string? FindEnclosingMethod(string[] lines, int lineIndex)
     {
-        // Look backwards for a method declaration
+        // Look backwards for a method or property declaration
         // Handles: public, private, protected, internal
         // Modifiers: static, virtual, override, abstract, sealed, async, new, extern, unsafe, partial
         for (int i = lineIndex; i >= 0; i--)
         {
-            var match = Regex.Match(lines[i], 
+            // Try to match a method declaration (has parentheses)
+            var methodMatch = Regex.Match(lines[i], 
                 @"(?:public|private|protected|internal)\s+" +
                 @"(?:(?:static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial)\s+)*" +
                 @"(?:\w+(?:<[^>]+>)?)\s+(\w+)\s*\(");
-            if (match.Success)
-                return match.Groups[1].Value;
+            if (methodMatch.Success)
+                return methodMatch.Groups[1].Value;
+
+            // Try to match a property declaration (has => or { after name, no parentheses)
+            // Pattern: [modifiers] ReturnType PropertyName { OR [modifiers] ReturnType PropertyName =>
+            var propMatch = Regex.Match(lines[i],
+                @"(?:public|private|protected|internal)\s+" +
+                @"(?:(?:static|virtual|override|abstract|sealed|new|extern|unsafe)\s+)*" +
+                @"(?:\w+(?:<[^>]+>)?(?:\?)?(?:\[\])?)\s+(\w+)\s*(?:=>|\{|$)");
+            if (propMatch.Success && !lines[i].Contains('('))  // Ensure it's not a method
+                return propMatch.Groups[1].Value + " (property)";
+
+            // Also check for getter/setter keywords to identify property context
+            if (Regex.IsMatch(lines[i].Trim(), @"^(?:get|set)\s*(?:\{|=>)"))
+            {
+                // We're inside a property accessor, continue looking backwards for property name
+                continue;
+            }
 
             // Stop if we hit a class declaration
             if (Regex.IsMatch(lines[i], @"(?:class|struct|interface)\s+\w+"))
